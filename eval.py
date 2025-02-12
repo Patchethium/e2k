@@ -28,6 +28,7 @@ dataset.set_return_full(True)  # bleu score test
 
 bleu = BLEUScore(n_gram=3)
 
+
 def tensor2str(t):
     return " ".join([str(int(x)) for x in t])
 

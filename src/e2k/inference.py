@@ -3,6 +3,7 @@ import numpy as np
 from typing import Optional, Dict
 import importlib.resources
 from e2k.constants import SOS_IDX, EOS_IDX, en_phones, kanas, ascii_entries
+from functools import partial
 
 
 class Linear:
@@ -186,12 +187,50 @@ class S2S:
         )
         self.fc = Linear(weights["fc.weight"], weights["fc.bias"])
         self.max_len = max_len
+        self.decode = self.greedy
 
     def greedy(self, step_dec: np.ndarray):
         """
         step_dec: [N]
         """
         return np.argmax(step_dec, axis=-1)
+
+    def top_k(self, step_dec: np.ndarray, k: int):
+        """
+        step_dec: [N]
+        """
+        candidates = np.flip(np.argsort(step_dec, axis=-1), axis=-1)[:k]
+        return np.random.choice(candidates)
+
+    def top_p(self, step_dec: np.ndarray, p: float, t: float):
+        """
+        step_dec: [N]
+        p: max probability
+        t: temperature
+        """
+        # softmax
+        step_dec = np.exp(step_dec) / t
+        step_dec = step_dec / step_dec.sum()
+        sorted_idx = np.flip(np.argsort(step_dec, axis=-1), axis=-1)
+        i = 0
+        cumsum = 0
+        while cumsum < p:
+            cumsum += step_dec[sorted_idx[i]]
+            i += 1
+        candidates = sorted_idx[:i]
+        return np.random.choice(candidates)
+
+    def set_decode_strategy(self, strategy: str, **kwargs):
+        if strategy == "greedy":
+            self.decode = self.greedy
+        elif strategy == "top_k":
+            self.decode = partial(self.top_k, k=kwargs.get("k", 3))
+        elif strategy == "top_p":
+            self.decode = partial(
+                self.top_p, p=kwargs.get("p", 0.9), t=kwargs.get("t", 1)
+            )
+        else:
+            raise ValueError("Invalid decode strategy")
 
     def forward(self, src):
         """
@@ -214,7 +253,7 @@ class S2S:
             x, h2 = self.post_decoder.forward(x, h2)
             x = self.fc.forward(x)
             x = x[0]
-            res.append(self.greedy(x))
+            res.append(self.decode(x))
             if res[-1] == EOS_IDX:
                 break
         return res
@@ -227,6 +266,9 @@ class BaseE2K:
         self.out_table = None
         raise NotImplementedError
 
+    def set_decode_strategy(self, strategy: str, **kwargs):
+        self.s2s.set_decode_strategy(strategy, **kwargs)
+
     def __call__(self, src: str) -> str:
         src = list(filter(lambda x: x in self.in_table, src))
         src = [self.in_table[c] for c in src]
@@ -237,8 +279,10 @@ class BaseE2K:
         tgt = [self.out_table[c] for c in tgt]
         return "".join(tgt)
 
+
 def get_weight_path(filename) -> str:
     return importlib.resources.files("e2k.models").joinpath(filename)
+
 
 class P2K(BaseE2K):
     def __init__(self, max_len: int = 16):
@@ -265,8 +309,16 @@ if __name__ == "__main__":
     args = parser.parse_args()
     p2k = P2K()
     c2k = C2K()
-    word = "voicevox"
+    word = "gutenberg"
     phonemes = g2p(word)
     print(word)
-    print("P2K: ", p2k(phonemes)) # ザワールド
-    print("C2K: ", c2k(word)) # ザワールド
+    print("P2K: ", p2k(phonemes))
+    print("C2K: ", c2k(word))
+    p2k.set_decode_strategy("top_k", k=2)
+    c2k.set_decode_strategy("top_k", k=2)
+    print("P2K (top_k): ", p2k(phonemes))
+    print("C2K (top_k): ", c2k(word))
+    p2k.set_decode_strategy("top_p", p=0.3, t=2)
+    c2k.set_decode_strategy("top_p", p=0.3, t=2)
+    print("P2K (top_p): ", p2k(phonemes))
+    print("C2K (top_p): ", c2k(word))

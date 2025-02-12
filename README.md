@@ -52,11 +52,15 @@ We also provide a seq2seq GRU model to convert English automatically to Katakana
 
 We provide 2 types of models, one converts phoneme to Katakana and one that converts character to Katakana. Choose the one that fits your use case.
 
+### Usage
+
+`e2k` is available on PyPI.
+
 ```bash
 pip install e2k
 ```
 
-The weights are included in PyPI, you can simply use the model like this:
+Usage:
 
 ```python
 from e2k import P2K, C2K
@@ -76,6 +80,17 @@ c2k = C2K()
 
 katakana = c2k("word")
 
+print(katakana) # "ワード"
+
+# decode strategy
+# greedy by default, top_k and top_p are available
+katakana = c2k("word", strategy="top_k", top_k=5)
+# or
+katakana = c2k("word", strategy="top_p", top_p=0.6, t=0.8)
+# top_k and top_p are sampling strategies, which means
+# each time you run the model, you may get different results
+# for further information, see https://huggingface.co/docs/transformers/en/generation_strategies
+# TODO: add beam searh
 print(katakana) # "ワード"
 ```
 

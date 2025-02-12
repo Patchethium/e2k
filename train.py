@@ -151,7 +151,7 @@ class MyDataset(Dataset):
                 k = [self.kata_dict[c] for c in k]
                 k = [self.sos_idx] + k + [self.eos_idx]
                 kata.append(torch.tensor(k).to(self.device))
-            en =  torch.tensor(eng).to(self.device)
+            en = torch.tensor(eng).to(self.device)
             self.cache_en[idx] = en
             self.cache_kata[idx] = kata
             return en, kata
@@ -241,7 +241,9 @@ def train():
         writer.add_scalar("Loss/val", total_loss / count, epoch)
         print(f"Epoch {epoch} Loss: {total_loss / count}")
         scheduler.step()
-        torch.save(model.state_dict(), f"model-{"p2k" if args.p2k else "c2k"}-e-{epoch}.pth")
+        torch.save(
+            model.state_dict(), f"model-{"p2k" if args.p2k else "c2k"}-e-{epoch}.pth"
+        )
 
 
 if __name__ == "__main__":
