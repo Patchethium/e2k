@@ -14,6 +14,7 @@ from typing import Dict, List
 import argparse
 from string import ascii_letters
 
+ascii_letters = ascii_letters + " "
 
 katakana_re = re.compile(r"[\u30A1-\u30F4\u30FC]+")
 en_re = re.compile(r"[a-zA-Z\-\s\+]+")
@@ -51,7 +52,11 @@ def extract_wiki(path) -> Dict[str, List[str]]:
                 en_word = en_word.lower().strip()
                 # the en_re will match whitespace, we filter out those
                 # too short or too long
-                if len(en_word) > 20 or len(en_word) < 2 or any([c not in ascii_letters for c in en_word]):
+                if (
+                    len(en_word) > 20
+                    or len(en_word) < 2
+                    or any([c not in ascii_letters for c in en_word])
+                ):
                     continue
                 if en_word:
                     katakana_dict[en_word].append(word)
@@ -109,6 +114,7 @@ def extract_jmdict(path) -> Dict[str, List[str]]:
                 or len(n_kanas) == 0
                 or any([c in en_word for c in "()012345678"])
                 or len(en_word) < 2
+                or en_word.count(" ") >= 2
                 or any([c not in ascii_letters for c in en_word])
             ):
                 continue

@@ -95,8 +95,8 @@ python eval.py --data ./vendor/katakana_dict.jsonl --model /path/to/your/model.p
 
 | Model                 | BLEU Score |
 | --------------------- | ---------- |
-| Phoneme to Katakana   | 0.80       |
-| Character to Katakana | 0.88       |
+| Phoneme to Katakana   | 0.85       |
+| Character to Katakana | 0.90       |
 
 ### Training the model
 
@@ -106,9 +106,21 @@ You'll need `torch` and `g2p_en`. After that, you can run the `train.py` script 
 python train.py --data ./vendor/kanji_dict.jsonl
 ```
 
+It takes around 10 minutes to train the model on a desktop CPU. The model will be saved as `model.pth` in the root folder.
+
 Also, you'll need to either download the `kanji_dict.jsonl` from the releases or create it yourself using the `extract.py` script.
 
 Be noted that the training script is not included in the PyPI package, you'll need to clone the repository to train the model.
+
+## Development
+
+### Install the dependencies
+
+I use [`uv`](https://docs.astral.sh/uv/) to manage the dependencies and publish the package.
+
+```bash
+uv sync
+```
 
 ## License
 

@@ -2,9 +2,9 @@
 # and calculate the accuracy.
 import torch
 import argparse
-from torchtext.data.metrics import bleu_score
+from torcheval.metrics import BLEUScore
 from tqdm.auto import tqdm
-from train import Model, MyDataset
+from train import Model, MyDataset, random_split
 
 parser = argparse.ArgumentParser()
 
@@ -23,18 +23,21 @@ model.load_state_dict(torch.load(args.model))
 model.eval()
 
 dataset = MyDataset(args.data, device, p2k=args.p2k)
-dataset.set_return_full(True) # bleu score test
+test_ds, _ = random_split(dataset, [0.1, 0.9])
+dataset.set_return_full(True)  # bleu score test
 
-candidates = []
-references = []
+bleu = BLEUScore(n_gram=3)
 
 def tensor2str(t):
-    return [str(int(x)) for x in t]
+    return " ".join([str(int(x)) for x in t])
 
-for i in tqdm(range(len(dataset))):
-    eng, kata = dataset[i]
+
+for i in tqdm(range(len(test_ds))):
+    eng, kata = test_ds[i]
     res = model.inference(eng)
-    candidates.append(tensor2str(res))
-    references.append([tensor2str(k) for k in kata])
+    pred_kana = tensor2str(res)
+    kana = [[tensor2str(k) for k in kata]]
+    bleu.update(pred_kana, kana)
 
-print(f"BLEU score: {bleu_score(candidates, references)}")
+
+print(f"BLEU score: {bleu.compute()}")

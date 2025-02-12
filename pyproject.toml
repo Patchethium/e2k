@@ -1,0 +1,47 @@
+[project]
+name = "e2k"
+version = "0.1.0"
+description = "A tool for automatic English to Katakana conversion"
+readme = "README.md"
+authors = [
+    { name = "Patchethium", email = "asguftuikh@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=2.2.2",
+]
+
+[project.scripts]
+e2k = "e2k:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "black>=25.1.0",
+    "build>=1.2.2.post1",
+    "g2p-en>=2.1.0",
+    "ipykernel>=6.29.5",
+    "tensorboard>=2.18.0",
+    "torch>=2.6.0",
+    "torcheval>=0.0.7",
+    "tqdm>=4.67.1",
+]
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/e2k"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"models" = "src/e2k/models"

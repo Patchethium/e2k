@@ -9,184 +9,21 @@ from random import randint
 from torch.utils.data import random_split, Dataset, DataLoader
 from torch.nn.utils.rnn import pad_sequence
 import torch.nn.functional as F
+from e2k.constants import kanas, en_phones, ascii_entries, PAD_IDX, SOS_IDX, EOS_IDX
 
 # scheduler
 from torch.optim.lr_scheduler import ExponentialLR
 from torch.utils.tensorboard import SummaryWriter
-from string import ascii_letters
-
-katas = [
-    "ァ",
-    "ア",
-    "ィ",
-    "イ",
-    "ゥ",
-    "ウ",
-    "ェ",
-    "エ",
-    "ォ",
-    "オ",
-    "カ",
-    "ガ",
-    "キ",
-    "ギ",
-    "ク",
-    "グ",
-    "ケ",
-    "ゲ",
-    "コ",
-    "ゴ",
-    "サ",
-    "ザ",
-    "シ",
-    "ジ",
-    "ス",
-    "ズ",
-    "セ",
-    "ゼ",
-    "ソ",
-    "ゾ",
-    "タ",
-    "ダ",
-    "チ",
-    "ヂ",
-    "ッ",
-    "ツ",
-    "テ",
-    "デ",
-    "ト",
-    "ド",
-    "ナ",
-    "ニ",
-    "ヌ",
-    "ネ",
-    "ノ",
-    "ハ",
-    "バ",
-    "パ",
-    "ヒ",
-    "ビ",
-    "ピ",
-    "フ",
-    "ブ",
-    "プ",
-    "ヘ",
-    "ベ",
-    "ペ",
-    "ホ",
-    "ボ",
-    "ポ",
-    "マ",
-    "ミ",
-    "ム",
-    "メ",
-    "モ",
-    "ャ",
-    "ヤ",
-    "ュ",
-    "ユ",
-    "ョ",
-    "ヨ",
-    "ラ",
-    "リ",
-    "ル",
-    "レ",
-    "ロ",
-    "ワ",
-    "ヰ",
-    "ヱ",
-    "ヲ",
-    "ン",
-    "ヴ",
-    "ー",
-]
-
-engs = [
-    "AA0",
-    "AA1",
-    "AA2",
-    "AE0",
-    "AE1",
-    "AE2",
-    "AH0",
-    "AH1",
-    "AH2",
-    "AO0",
-    "AO1",
-    "AO2",
-    "AW0",
-    "AW1",
-    "AW2",
-    "AY0",
-    "AY1",
-    "AY2",
-    "B",
-    "CH",
-    "D",
-    "DH",
-    "EH0",
-    "EH1",
-    "EH2",
-    "ER0",
-    "ER1",
-    "ER2",
-    "EY0",
-    "EY1",
-    "EY2",
-    "F",
-    "G",
-    "HH",
-    "IH0",
-    "IH1",
-    "IH2",
-    "IY0",
-    "IY1",
-    "IY2",
-    "JH",
-    "K",
-    "L",
-    "M",
-    "N",
-    "NG",
-    "OW0",
-    "OW1",
-    "OW2",
-    "OY0",
-    "OY1",
-    "OY2",
-    "P",
-    "R",
-    "S",
-    "SH",
-    "T",
-    "TH",
-    "UH0",
-    "UH1",
-    "UH2",
-    "UW0",
-    "UW1",
-    "UW2",
-    "V",
-    "W",
-    "Y",
-    "Z",
-    "ZH",
-]
-
-ascii_entries = ["<pad>", "<sos>", "<eos>"] + list(ascii_letters)
-
-katas = ["<pad>", "<sos>", "<eos>"] + katas
-engs = ["<pad>", "<sos>", "<eos>"] + engs
 
 
 class Model(nn.Module):
     def __init__(self, p2k: bool = False):
         super(Model, self).__init__()
         if p2k:
-            self.e_emb = nn.Embedding(len(engs), 256)
+            self.e_emb = nn.Embedding(len(en_phones), 256)
         else:
             self.e_emb = nn.Embedding(len(ascii_entries), 256)
-        self.k_emb = nn.Embedding(len(katas), 256)
+        self.k_emb = nn.Embedding(len(kanas), 256)
         self.encoder = nn.GRU(256, 256, batch_first=True, bidirectional=True)
         self.encoder_fc = nn.Sequential(
             nn.Linear(2 * 256, 256),
@@ -195,27 +32,33 @@ class Model(nn.Module):
         self.pre_decoder = nn.GRU(256, 256, batch_first=True)
         self.post_decoder = nn.GRU(2 * 256, 256, batch_first=True)
         self.attn = nn.MultiheadAttention(256, 4, batch_first=True, dropout=0.1)
-        self.fc = nn.Linear(256, len(katas))
+        self.fc = nn.Linear(256, len(kanas))
 
-    def forward(self, src, tgt):
+    def forward(self, src, tgt, src_mask=None, tgt_mask=None):
+        """
+        src: [B, Ts]
+        tgt: [B, Tt]
+        src_mask: [B, Ts]
+        tgt_mask: [B, Tt]
+        """
         e_emb = self.e_emb(src)
         k_emb = self.k_emb(tgt)
-        k_emb = F.pad(k_emb, (0, 0, 1, 0))
+        k_emb = k_emb[:, :-1]
         enc_out, _ = self.encoder(e_emb)
         enc_out = self.encoder_fc(enc_out)
         dec_out, _ = self.pre_decoder(k_emb)
-        attn_out, _ = self.attn(dec_out, enc_out, enc_out)
+        attn_out, _ = self.attn.forward(
+            dec_out, enc_out, enc_out, key_padding_mask=~src_mask
+        )
         x = torch.cat([dec_out, attn_out], dim=-1)
         x, _ = self.post_decoder(x)
         x = self.fc(x)
-        # strip the padded tokens
-        x = x[:, :-1]
         return x
 
     def inference(self, src):
         # Assume both src and tgt are unbatched
-        sos_idx = 1
-        eos_idx = 2
+        sos_idx = SOS_IDX
+        eos_idx = EOS_IDX
         src = src.unsqueeze(0)
         src_emb = self.e_emb(src)
         enc_out, _ = self.encoder(src_emb)
@@ -249,12 +92,14 @@ class MyDataset(Dataset):
             lines = file.readlines()
         self.data = [json.loads(line) for line in lines]
         self.device = device
-        self.eng_dict = {c: i for i, c in enumerate(engs)}
+        self.eng_dict = {c: i for i, c in enumerate(en_phones)}
         self.c_dict = {c: i for i, c in enumerate(ascii_entries)}
-        self.kata_dict = {c: i for i, c in enumerate(katas)}
-        self.pad_idx = 0
-        self.sos_idx = 1
-        self.eos_idx = 2
+        self.kata_dict = {c: i for i, c in enumerate(kanas)}
+        self.pad_idx = PAD_IDX
+        self.sos_idx = SOS_IDX
+        self.eos_idx = EOS_IDX
+        self.cache_en = {}
+        self.cache_kata = {}
         self.p2k_flag = p2k
         self.return_full = False
 
@@ -279,6 +124,8 @@ class MyDataset(Dataset):
         self.return_full = flag
 
     def __getitem__(self, idx):
+        if idx in self.cache_en:
+            return self.cache_en[idx], self.cache_kata[idx]
         item = self.data[idx]
         eng = item["word"]
         katas = item["kata"]
@@ -294,14 +141,21 @@ class MyDataset(Dataset):
             kata = katas[randint(0, len(katas) - 1)]
             kata = [self.kata_dict[c] for c in kata]
             kata = [self.sos_idx] + kata + [self.eos_idx]
-            return torch.tensor(eng).to(self.device), torch.tensor(kata).to(self.device)
+            en = torch.tensor(eng).to(self.device)
+            kana = torch.tensor(kata).to(self.device)
+            self.cache_en[idx] = en
+            self.cache_kata[idx] = kana
+            return en, kana
         else:
             kata = []
             for k in katas:
                 k = [self.kata_dict[c] for c in k]
                 k = [self.sos_idx] + k + [self.eos_idx]
                 kata.append(torch.tensor(k).to(self.device))
-            return torch.tensor(eng).to(self.device), kata
+            en =  torch.tensor(eng).to(self.device)
+            self.cache_en[idx] = en
+            self.cache_kata[idx] = kata
+            return en, kata
 
 
 def lens2mask(lens, max_len):
@@ -327,10 +181,10 @@ def infer(src, model, p2k):
     model = model.eval()
     res = model.inference(src)
     # return to words
-    res = [katas[i] for i in res]
+    res = [kanas[i] for i in res]
     # also for english phonemes
     if p2k:
-        src = [engs[i] for i in src]
+        src = [en_phones[i] for i in src]
     else:
         src = [ascii_entries[i] for i in src]
     return src, res
@@ -357,16 +211,16 @@ def train():
 
     criterion = nn.CrossEntropyLoss(ignore_index=0)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-    scheduler = ExponentialLR(optimizer, 0.85)
+    scheduler = ExponentialLR(optimizer, 0.8)
     writer = SummaryWriter()
-    epochs = 15
+    epochs = 10
     steps = 0
     for epoch in range(1, epochs + 1):
         model.train()
         for eng, kata, e_mask, k_mask in train_dl:
             optimizer.zero_grad()
-            out = model(eng, kata)
-            loss = criterion(out.transpose(1, 2), kata)
+            out = model(eng, kata, e_mask, k_mask)
+            loss = criterion(out.transpose(1, 2), kata[:, 1:])
             writer.add_scalar("Loss/train", loss.item(), steps)
             loss.backward()
             optimizer.step()
@@ -376,8 +230,8 @@ def train():
         count = 0
         with torch.no_grad():
             for eng, kata, e_mask, k_mask in val_dl:
-                out = model(eng, kata)
-                loss = criterion(out.transpose(1, 2), kata)
+                out = model(eng, kata, e_mask, k_mask)
+                loss = criterion(out.transpose(1, 2), kata[:, 1:])
                 total_loss += loss.item()
                 count += 1
         # take a sample and inference it
@@ -388,7 +242,7 @@ def train():
         writer.add_scalar("Loss/val", total_loss / count, epoch)
         print(f"Epoch {epoch} Loss: {total_loss / count}")
         scheduler.step()
-    torch.save(model.state_dict(), "model.pth")
+        torch.save(model.state_dict(), f"model-{"p2k" if args.p2k else "c2k"}-e-{epoch}.pth")
 
 
 if __name__ == "__main__":

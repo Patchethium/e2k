@@ -1,6 +1,7 @@
 """
 Exports the torch weights to numpy npy files.
 """
+
 import numpy as np
 import torch
 import argparse
