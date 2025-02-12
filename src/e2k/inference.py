@@ -238,8 +238,7 @@ class BaseE2K:
         return "".join(tgt)
 
 def get_weight_path(filename) -> str:
-    with importlib.resources.path("e2k.models", filename) as p:
-        return str(p)
+    return importlib.resources.files("e2k.models").joinpath(filename)
 
 class P2K(BaseE2K):
     def __init__(self, max_len: int = 16):
