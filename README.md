@@ -136,7 +136,3 @@ The model weights are released under the same license as the dictionary.
 
 - [Wikitionary](https://www.wiktionary.org/)
 - [JMdict / EDICT](http://www.edrdg.org/jmdict/edict.html)
-
-Also, I coded this in a few hours listening to Autechre. I hope you find their music as inspiring as I do.
-
-I will recommend `Tri Repetae`, `LP5`, `Confield`, `Untilted`, `Gantz Graf EP`, and live `AE_LYON_070524` as their peak.
