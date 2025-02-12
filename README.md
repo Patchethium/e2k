@@ -74,17 +74,25 @@ print(katakana) # "ワード"
 # character directly to katakana
 c2k = C2K()
 
-# since it's an autoregressive model, you can set the decoding strategy
-# to greedy, top-k or nucleus sampling (top-p)
-# see https://huggingface.co/docs/transformers/en/generation_strategies
-c2k.set_decoding_strategy("top-p", p=0.3)
-
 katakana = c2k("word")
 
 print(katakana) # "ワード"
 ```
 
 We rewrite the inference of GRU model in `numpy`, minimizing the dependencies to `numpy` only.
+
+ > [!Note]
+ > The sections below requires more than `numpy`, but they're not required for the end user.
+
+## Development
+
+### Install the dependencies
+
+I use [`uv`](https://docs.astral.sh/uv/) to manage the dependencies and publish the package.
+
+```bash
+uv sync
+```
 
 ### Benchmark
 
@@ -98,29 +106,34 @@ python eval.py --data ./vendor/katakana_dict.jsonl --model /path/to/your/model.p
 | Phoneme to Katakana   | 0.85       |
 | Character to Katakana | 0.90       |
 
-### Training the model
+### Train
 
-You'll need `torch` and `g2p_en`. After that, you can run the `train.py` script to train the model.
+After installing the dependencies, `torch` will be installed as a development dependency. You can train the model using
 
 ```bash
 python train.py --data ./vendor/kanji_dict.jsonl
 ```
 
-It takes around 10 minutes to train the model on a desktop CPU. The model will be saved as `model.pth` in the root folder.
+It takes around 10 minutes on a desktop CPU. The model will be saved as `model-{p2k/c2k}-e-{epoch}.pth` in the root folder.
 
 Also, you'll need to either download the `kanji_dict.jsonl` from the releases or create it yourself using the `extract.py` script.
 
-Be noted that the training script is not included in the PyPI package, you'll need to clone the repository to train the model.
+### Export
 
-## Development
-
-### Install the dependencies
-
-I use [`uv`](https://docs.astral.sh/uv/) to manage the dependencies and publish the package.
+The model should be exported to `numpy` format for production use.
 
 ```bash
-uv sync
+# --p2k for phoneme to katakana, if not provided, it will be character to katakana
+# --fp16 for half precision, there's no reason not to use it
+# --output to specify the output file, in this project it's `model-{p2k/c2k}.npz`
+python export.py --model /path/to/your/model.pth --p2k --fp16 --output /path/to/your/model.npy
 ```
+
+> [!Note]
+> The model is not included in the Git registry, I uploaded exported models to the releases, but didn't upload the `pth` format.
+
+> [!Note]
+> The benchmarking/training script is not included in the PyPI package, you'll need to clone this repository to train the model.
 
 ## License
 

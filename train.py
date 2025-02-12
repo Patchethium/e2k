@@ -8,7 +8,6 @@ import argparse
 from random import randint
 from torch.utils.data import random_split, Dataset, DataLoader
 from torch.nn.utils.rnn import pad_sequence
-import torch.nn.functional as F
 from e2k.constants import kanas, en_phones, ascii_entries, PAD_IDX, SOS_IDX, EOS_IDX
 
 # scheduler
@@ -160,8 +159,8 @@ class MyDataset(Dataset):
 
 def lens2mask(lens, max_len):
     mask = torch.zeros(len(lens), max_len).bool()
-    for i, l in enumerate(lens):
-        mask[i, :l] = True
+    for i, le in enumerate(lens):
+        mask[i, :le] = True
     return mask
 
 
