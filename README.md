@@ -1,6 +1,8 @@
 # English to Katakana Dictionary
 
-It's an extraction of the Wikitionary's Japanese dictionary and a cleaning of `JMdict / EDICT` to create a dictionary of English words and their Katakana representation.
+It's an extraction of the Wikitionary's Japanese dictionary and `JMdict / EDICT` to create a dictionary of English words and their Katakana representation.
+
+We also provide a GRU model to convert English to Katakana without a dictionary.
 
 ```json
 {"word": "word", "katakana": "ワード"}
@@ -18,7 +20,7 @@ The script has zero dependencies, as long as you have a Python 3 interpreter it 
 
 Download the raw dump of the Japanese Wikitionary from https://kaikki.org/dictionary/rawdata.html, they kindly provide the parsed data in a JSONL format.
 
-Look for the `Japanese ja-extract.jsonl.gz (compressed 37.5MB)` entry and download it. If you prefer command line, use 
+Look for the `Japanese ja-extract.jsonl.gz (compressed 37.5MB)` entry and download it. If you prefer command line, use
 
 ```bash
 curl -O https://kaikki.org/dictionary/downloads/ja/ja-extract.jsonl.gz
@@ -28,7 +30,7 @@ curl -O https://kaikki.org/dictionary/downloads/ja/ja-extract.jsonl.gz
 
 Extract it into `/vendor` folder.
 
-On Linux, you can use 
+On Linux, you can use
 
 ```bash
 gzip -d ja-extract.jsonl.gz
@@ -72,6 +74,11 @@ print(katakana) # "ワード"
 # character directly to katakana
 c2k = C2K()
 
+# since it's an autoregressive model, you can set the decoding strategy
+# to greedy, top-k or nucleus sampling (top-p)
+# see https://huggingface.co/docs/transformers/en/generation_strategies
+c2k.set_decoding_strategy("top-p", p=0.3)
+
 katakana = c2k("word")
 
 print(katakana) # "ワード"
@@ -79,7 +86,17 @@ print(katakana) # "ワード"
 
 We rewrite the inference of GRU model in `numpy`, minimizing the dependencies to `numpy` only.
 
-I hate including binary files in the repository, so I won't include the model weights.
+### Benchmark
+
+```bash
+# --p2k for phoneme to katakana, if not provided, it will be character to katakana
+python eval.py --data ./vendor/katakana_dict.jsonl --model /path/to/your/model.pth --p2k
+```
+
+| Model                 | BLEU Score |
+| --------------------- | ---------- |
+| Phoneme to Katakana   | 0.80       |
+| Character to Katakana | 0.88       |
 
 ### Training the model
 
@@ -88,6 +105,7 @@ You'll need `torch` and `g2p_en`. After that, you can run the `train.py` script 
 ```bash
 python train.py --data ./vendor/kanji_dict.jsonl
 ```
+
 Also, you'll need to either download the `kanji_dict.jsonl` from the releases or create it yourself using the `extract.py` script.
 
 Be noted that the training script is not included in the PyPI package, you'll need to clone the repository to train the model.

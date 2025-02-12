@@ -102,40 +102,70 @@ katas = [
 ]
 
 engs = [
-    "AA",
-    "AE",
-    "AH",
-    "AO",
-    "AW",
-    "AY",
+    "AA0",
+    "AA1",
+    "AA2",
+    "AE0",
+    "AE1",
+    "AE2",
+    "AH0",
+    "AH1",
+    "AH2",
+    "AO0",
+    "AO1",
+    "AO2",
+    "AW0",
+    "AW1",
+    "AW2",
+    "AY0",
+    "AY1",
+    "AY2",
     "B",
     "CH",
     "D",
     "DH",
-    "EH",
-    "ER",
-    "EY",
+    "EH0",
+    "EH1",
+    "EH2",
+    "ER0",
+    "ER1",
+    "ER2",
+    "EY0",
+    "EY1",
+    "EY2",
     "F",
     "G",
     "HH",
-    "IH",
-    "IY",
+    "IH0",
+    "IH1",
+    "IH2",
+    "IY0",
+    "IY1",
+    "IY2",
     "JH",
     "K",
     "L",
     "M",
     "N",
     "NG",
-    "OW",
-    "OY",
+    "OW0",
+    "OW1",
+    "OW2",
+    "OY0",
+    "OY1",
+    "OY2",
     "P",
     "R",
     "S",
     "SH",
     "T",
     "TH",
-    "UH",
-    "UW",
+    "UH0",
+    "UH1",
+    "UH2",
+    "UW0",
+    "UW1",
+    "UW2",
     "V",
     "W",
     "Y",
@@ -184,7 +214,6 @@ class Model(nn.Module):
 
     def inference(self, src):
         # Assume both src and tgt are unbatched
-        print("Infering")
         sos_idx = 1
         eos_idx = 2
         src = src.unsqueeze(0)
@@ -227,13 +256,14 @@ class MyDataset(Dataset):
         self.sos_idx = 1
         self.eos_idx = 2
         self.p2k_flag = p2k
+        self.return_full = False
 
     def __len__(self):
         return len(self.data)
 
     def p2k(self, eng):
         phonemes = self.g2p(eng)
-        phonemes = [p[:-1] if p[-1] in "012" else p for p in phonemes]
+        # phonemes = [p[:-1] if p[-1] in "012" else p for p in phonemes]
         phonemes = list(filter(lambda x: x in self.eng_dict, phonemes))
         eng = [self.eng_dict[c] for c in phonemes]
         return eng
@@ -241,6 +271,12 @@ class MyDataset(Dataset):
     def c2k(self, eng):
         eng = [self.c_dict[c] for c in eng]
         return eng
+
+    def set_return_full(self, flag: bool):
+        """
+        Returns the full dataset, it's for bleu score calculation
+        """
+        self.return_full = flag
 
     def __getitem__(self, idx):
         item = self.data[idx]
@@ -250,13 +286,22 @@ class MyDataset(Dataset):
             eng = self.p2k(eng)
         else:
             eng = self.c2k(eng)
-        # katas is a list of katakana words
-        # we randomly select one of them
-        kata = katas[randint(0, len(katas) - 1)]
-        kata = [self.kata_dict[c] for c in kata]
         eng = [self.sos_idx] + eng + [self.eos_idx]
-        kata = [self.sos_idx] + kata + [self.eos_idx]
-        return torch.tensor(eng).to(self.device), torch.tensor(kata).to(self.device)
+        # katas is a list of katakana words
+        # if not return_full, we randomly select one of them
+        # else we return all of them
+        if not self.return_full:
+            kata = katas[randint(0, len(katas) - 1)]
+            kata = [self.kata_dict[c] for c in kata]
+            kata = [self.sos_idx] + kata + [self.eos_idx]
+            return torch.tensor(eng).to(self.device), torch.tensor(kata).to(self.device)
+        else:
+            kata = []
+            for k in katas:
+                k = [self.kata_dict[c] for c in k]
+                k = [self.sos_idx] + k + [self.eos_idx]
+                kata.append(torch.tensor(k).to(self.device))
+            return torch.tensor(eng).to(self.device), kata
 
 
 def lens2mask(lens, max_len):
