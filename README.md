@@ -10,13 +10,19 @@ We also provide a GRU model to convert English to Katakana without a dictionary.
 {"word": "example", "katakana": "エグザンプル"}
 ```
 
-It's for the purpose of converting English words to Katakana and further use in Japanese Text-to-Speech applications or Japanese learning.
+It's for the further use in Japanese Text-to-Speech applications or Japanese learning.
 
-## Re-creating the dictionary
+This README is divided into 2 parts, first about the dictionary extraction and the second part is about the model.
 
-The script has zero dependencies, as long as you have a Python 3 interpreter it should work.
+## Dictionary
 
-### Download the dictionary
+### Dependencies
+
+The extraction script has zero dependencies, as long as you have a Python 3 interpreter it should work.
+
+### Download the data
+
+#### Wikitionary
 
 Download the raw dump of the Japanese Wikitionary from https://kaikki.org/dictionary/rawdata.html, they kindly provide the parsed data in a JSONL format.
 
@@ -26,17 +32,26 @@ Look for the `Japanese ja-extract.jsonl.gz (compressed 37.5MB)` entry and downlo
 curl -O https://kaikki.org/dictionary/downloads/ja/ja-extract.jsonl.gz
 ```
 
-### Extract it
+#### JMdict / EDICT
 
-Extract it into `/vendor` folder.
+Download the `JMdict` and `EDICT` from https://www.edrdg.org/wiki/index.php/JMdict-EDICT_Dictionary_Project.
+
+Look for the `edict2.gz` and download it. Or in command line:
+
+```bash
+curl -O http://ftp.edrdg.org/pub/Nihongo/edict2.gz
+```
+
+Extract both files into `/vendor` folder.
 
 On Linux, you can use
 
 ```bash
 gzip -d ja-extract.jsonl.gz
+gzip -d edict2.gz
 ```
 
-### Run the script
+### Run the extraction
 
 ```bash
 python extract.py
@@ -44,7 +59,7 @@ python extract.py
 python extract.py --path /path/to/your_file.jsonl
 ```
 
-And a `katakana_dict.jsonl` file will be created in the root folder.
+By default, a `katakana_dict.jsonl` file will be created in the `vendor` folder.
 
 ## E2K model
 
@@ -89,15 +104,16 @@ katakana = c2k("word", strategy="top_k", top_k=5)
 katakana = c2k("word", strategy="top_p", top_p=0.6, t=0.8)
 # top_k and top_p are sampling strategies, which means
 # each time you run the model, you may get different results
-# for further information, see https://huggingface.co/docs/transformers/en/generation_strategies
+# for further information, see
+# https://huggingface.co/docs/transformers/en/generation_strategies
 # TODO: add beam searh
 print(katakana) # "ワード"
 ```
 
 We rewrite the inference of GRU model in `numpy`, minimizing the dependencies to `numpy` only.
 
- > [!Note]
- > The sections below requires more than `numpy`, but they're not required for the end user.
+> [!Note]
+> The sections below require more than `numpy`, but they're not required for the end user.
 
 ## Development
 
@@ -109,6 +125,8 @@ I use [`uv`](https://docs.astral.sh/uv/) to manage the dependencies and publish 
 uv sync
 ```
 
+Then activate the virtual environment with `source .venv/bin/activate` or add `uv run` before the commands.
+
 ### Benchmark
 
 ```bash
@@ -116,22 +134,22 @@ uv sync
 python eval.py --data ./vendor/katakana_dict.jsonl --model /path/to/your/model.pth --p2k
 ```
 
-| Model                 | BLEU Score |
-| --------------------- | ---------- |
-| Phoneme to Katakana   | 0.85       |
-| Character to Katakana | 0.90       |
+| Model                 | BLEU Score ↑ |
+| --------------------- | ------------ |
+| Phoneme to Katakana   | 0.85         |
+| Character to Katakana | 0.90         |
 
 ### Train
 
-After installing the dependencies, `torch` will be installed as a development dependency. You can train the model using
+After installing the dependencies, `torch` will be added as a development dependency. You can train the model using
 
 ```bash
-python train.py --data ./vendor/kanji_dict.jsonl
+python train.py --data ./vendor/katakana_dict.jsonl
 ```
 
-It takes around 10 minutes on a desktop CPU. The model will be saved as `model-{p2k/c2k}-e-{epoch}.pth` in the root folder.
+It takes around 10 minutes on a desktop CPU. The model will be saved as `vendor/model-{p2k/c2k}-e-{epoch}.pth`.
 
-Also, you'll need to either download the `kanji_dict.jsonl` from the releases or create it yourself using the `extract.py` script.
+Also, you'll need to either download the `katakana_dict.jsonl` from the releases or create it yourself using the `extract.py` script.
 
 ### Export
 
@@ -141,7 +159,7 @@ The model should be exported to `numpy` format for production use.
 # --p2k for phoneme to katakana, if not provided, it will be character to katakana
 # --fp16 for half precision, there's no reason not to use it
 # --output to specify the output file, in this project it's `model-{p2k/c2k}.npz`
-python export.py --model /path/to/your/model.pth --p2k --fp16 --output /path/to/your/model.npy
+python export.py --model /path/to/your/model.pth --p2k --fp16 --output /path/to/your/model.npz
 ```
 
 > [!Note]

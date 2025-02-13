@@ -241,8 +241,9 @@ def train():
         writer.add_scalar("Loss/val", total_loss / count, epoch)
         print(f"Epoch {epoch} Loss: {total_loss / count}")
         scheduler.step()
+        name = "p2k" if args.p2k else "c2k"
         torch.save(
-            model.state_dict(), f"model-{"p2k" if args.p2k else "c2k"}-e-{epoch}.pth"
+            model.state_dict(), f"vendormodel-{name}-e-{epoch}.pth"
         )
 
 
