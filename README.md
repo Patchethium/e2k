@@ -99,9 +99,8 @@ print(katakana) # "ワード"
 
 # decode strategy
 # greedy by default, top_k and top_p are available
-katakana = c2k("word", strategy="top_k", top_k=5)
-# or
-katakana = c2k("word", strategy="top_p", top_p=0.6, t=0.8)
+c2k.set_decode_strategy("top_k", top_k=2)
+c2k.set_decode_strategy("top_p", top_p=0.6, t=0.8)
 # top_k and top_p are sampling strategies, which means
 # each time you run the model, you may get different results
 # for further information, see
@@ -134,10 +133,12 @@ Then activate the virtual environment with `source .venv/bin/activate` or add `u
 python eval.py --data ./vendor/katakana_dict.jsonl --model /path/to/your/model.pth --p2k
 ```
 
-| Model                 | BLEU Score ↑ |
-| --------------------- | ------------ |
-| Phoneme to Katakana   | 0.85         |
-| Character to Katakana | 0.90         |
+| Model | BLEU Score ↑ |
+| ----- | ------------ |
+| P2K   | 0.87         |
+| C2K   | 0.91         |
+
+The BLEU score is calculated on random subset with size of 10% of the dataset.
 
 ### Train
 
@@ -159,6 +160,7 @@ The model should be exported to `numpy` format for production use.
 # --p2k for phoneme to katakana, if not provided, it will be character to katakana
 # --fp16 for half precision, there's no reason not to use it
 # --output to specify the output file, in this project it's `model-{p2k/c2k}.npz`
+# --safetenors to use safe tensors, it's for easier binding in some languages
 python export.py --model /path/to/your/model.pth --p2k --fp16 --output /path/to/your/model.npz
 ```
 

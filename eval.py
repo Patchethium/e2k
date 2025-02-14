@@ -22,6 +22,8 @@ model.load_state_dict(torch.load(args.model))
 
 model.eval()
 
+torch.manual_seed(3407)
+
 dataset = MyDataset(args.data, device, p2k=args.p2k)
 test_ds, _ = random_split(dataset, [0.1, 0.9])
 dataset.set_return_full(True)  # bleu score test

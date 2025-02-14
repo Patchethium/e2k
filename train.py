@@ -1,37 +1,43 @@
 # we train a s2s model to predict the katakana phonemes from
 # English phonemes
-from g2p_en import G2p
 import json
+import argparse
+from os import path
+from random import randint
+
 import torch
 from torch import nn
-import argparse
-from random import randint
 from torch.utils.data import random_split, Dataset, DataLoader
 from torch.nn.utils.rnn import pad_sequence
-from e2k.constants import kanas, en_phones, ascii_entries, PAD_IDX, SOS_IDX, EOS_IDX
-
-# scheduler
 from torch.optim.lr_scheduler import ExponentialLR
 from torch.utils.tensorboard import SummaryWriter
+
+from g2p_en import G2p
+
+from e2k.constants import kanas, en_phones, ascii_entries, PAD_IDX, SOS_IDX, EOS_IDX
+
+
+SEED = 3407
+DIM = 256
 
 
 class Model(nn.Module):
     def __init__(self, p2k: bool = False):
         super(Model, self).__init__()
         if p2k:
-            self.e_emb = nn.Embedding(len(en_phones), 256)
+            self.e_emb = nn.Embedding(len(en_phones), DIM)
         else:
-            self.e_emb = nn.Embedding(len(ascii_entries), 256)
-        self.k_emb = nn.Embedding(len(kanas), 256)
-        self.encoder = nn.GRU(256, 256, batch_first=True, bidirectional=True)
+            self.e_emb = nn.Embedding(len(ascii_entries), DIM)
+        self.k_emb = nn.Embedding(len(kanas), DIM)
+        self.encoder = nn.GRU(DIM, DIM, batch_first=True, bidirectional=True)
         self.encoder_fc = nn.Sequential(
-            nn.Linear(2 * 256, 256),
+            nn.Linear(2 * DIM, DIM),
             nn.Tanh(),
         )
-        self.pre_decoder = nn.GRU(256, 256, batch_first=True)
-        self.post_decoder = nn.GRU(2 * 256, 256, batch_first=True)
-        self.attn = nn.MultiheadAttention(256, 4, batch_first=True, dropout=0.1)
-        self.fc = nn.Linear(256, len(kanas))
+        self.pre_decoder = nn.GRU(DIM, DIM, batch_first=True)
+        self.post_decoder = nn.GRU(2 * DIM, DIM, batch_first=True)
+        self.attn = nn.MultiheadAttention(DIM, 4, batch_first=True, dropout=0.1)
+        self.fc = nn.Linear(DIM, len(kanas))
 
     def forward(self, src, tgt, src_mask=None, tgt_mask=None):
         """
@@ -190,6 +196,7 @@ def infer(src, model, p2k):
 
 
 def train():
+    torch.manual_seed(SEED)
     parser = argparse.ArgumentParser()
     parser.add_argument("--data", type=str, default="data.jsonl")
     parser.add_argument("--p2k", action="store_true")
@@ -242,8 +249,10 @@ def train():
         print(f"Epoch {epoch} Loss: {total_loss / count}")
         scheduler.step()
         name = "p2k" if args.p2k else "c2k"
+    else:
         torch.save(
-            model.state_dict(), f"vendormodel-{name}-e-{epoch}.pth"
+            model.state_dict(),
+            path.join("vendor", f"model-{name}-e{epoch}.pth"),
         )
 
 

@@ -18,7 +18,6 @@ ascii_letters = ascii_letters + " "
 
 katakana_re = re.compile(r"[\u30A1-\u30F4\u30FC]+")
 en_re = re.compile(r"[a-zA-Z\-\s\+]+")
-kata = set()
 
 
 def extract_wiki(path) -> Dict[str, List[str]]:
@@ -109,13 +108,14 @@ def extract_jmdict(path) -> Dict[str, List[str]]:
                 en_word = re.sub(r"\{.*?\}", "", en_word)
                 en_word = en_word.strip()
             en_word = en_word.lower().replace("-", " ").strip()
-            if (
-                len(en_word) > 20
-                or len(n_kanas) == 0
-                or any([c in en_word for c in "()012345678"])
-                or len(en_word) < 2
-                or en_word.count(" ") >= 2
-                or any([c not in ascii_letters for c in en_word])
+            if any(
+                [
+                    len(en_word) > 20,
+                    len(n_kanas) == 0,
+                    len(en_word) < 2,
+                    en_word.count(" ") >= 2,
+                    any([c not in ascii_letters for c in en_word]),
+                ]
             ):
                 continue
             katakana_dict[en_word].extend(list(n_kanas))
@@ -135,22 +135,63 @@ def post_processing(
         katakana_dict[en_word].extend(katakana_words)
     for en_word, katakana_words in katakana_dict.items():
         katakana_dict[en_word] = list(set(katakana_words))
-    # remove substrings from a set of katakana words
-    # for example, "アメリカ" is a substring of "アメリカ合衆国"
-    # if both are present, we remove the shorter "アメリカ" and keep "アメリカ合衆国"
-    for en_word, katakana_words in katakana_dict.items():
-        katakana_dict[en_word] = sorted(
-            katakana_words, key=lambda x: len(x), reverse=True
-        )
-        n_katakana_words = []
-        for katakana in katakana_dict[en_word]:
-            # yeah it's dumb O(n^2) but it's not that big
-            if not any(katakana in n_kata for n_kata in n_katakana_words):
-                for k in katakana:
-                    kata.add(k)
-                n_katakana_words.append(katakana)
-        katakana_dict[en_word] = n_katakana_words
+    katakana_dict = filter_outliers(katakana_dict)
     return katakana_dict
+
+
+class Welford:
+    """
+    util class for calculating the mean and std of a sequence of numbers online
+    """
+
+    def __init__(self):
+        self.k = 0
+        self.M = 0
+        self.S = 0
+
+    def update(self, x):
+        self.k += 1
+        new_M = self.M + (x - self.M) / self.k
+        new_S = self.S + (x - self.M) * (x - new_M)
+        self.M = new_M
+        self.S = new_S
+
+    def mean(self):
+        return self.M
+
+    def std(self):
+        return (self.S / (self.k - 1)) ** 0.5
+
+
+def filter_outliers(dict: Dict[str, List[str]]) -> Dict[str, List[str]]:
+    # calculates the mean and std of the length ratio of the katakana words / English words
+    # and filters out the outliers out side of mean \pm 2 * std
+    # it's because katakana dict sometimes contain short-hand katakana words
+    # like 「パソコン」 for "personal computer"
+    welford = Welford()
+    entries = 0
+    for en_word, katakana_words in dict.items():
+        for katakana_word in katakana_words:
+            welford.update(len(katakana_word) / len(en_word))
+            entries += 1
+    mean = welford.mean()
+    std = welford.std()
+    print(f"Mean: {mean}, Std: {std}")
+    new_dict = {}
+    new_entries = 0
+    for en_word, katakana_words in dict.items():
+        n_katakana_words = []
+        for katakana_word in katakana_words:
+            ratio = len(katakana_word) / len(en_word)
+            if mean - 2 * std < ratio < mean + 2 * std:
+                n_katakana_words.append(katakana_word)
+                new_entries += 1
+        if len(n_katakana_words) > 0:
+            new_dict[en_word] = n_katakana_words
+    print(
+        f"Filtered {entries - new_entries} outliers; final katakanas: {new_entries}; final entries: {len(new_dict)}"
+    )
+    return new_dict
 
 
 if __name__ == "__main__":
@@ -166,8 +207,6 @@ if __name__ == "__main__":
     wiki_dict = extract_wiki(args.path)
     jmdict_dict = extract_jmdict("vendor/edict2")
     katakana_dict = post_processing(wiki_dict, jmdict_dict)
-    print(f"Total katakana characters: {len(kata)}")
-    print(sorted(list(kata)))
     # save as jsonl
     with open("vendor/katakana_dict.jsonl", "w") as f:
         for en_word, katakana_words in katakana_dict.items():

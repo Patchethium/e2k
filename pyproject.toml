@@ -19,6 +19,7 @@ dev = [
     "black>=25.1.0",
     "build>=1.2.2.post1",
     "g2p-en>=2.1.0",
+    "safetensors>=0.5.2",
     "tensorboard>=2.18.0",
     "torch>=2.6.0",
     "torcheval>=0.0.7",
