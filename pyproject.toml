@@ -1,11 +1,11 @@
 [project]
 name = "e2k"
-version = "0.1.2"
+version = "0.2.0"
 description = "A tool for automatic English to Katakana conversion"
 readme = "README.md"
 authors = [{ name = "Patchethium", email = "asguftuikh@gmail.com" }]
 requires-python = ">=3.10"
-dependencies = ["numpy>=2.2.2"]
+dependencies = ["numpy>=1.0,<2.0"]
 
 [build-system]
 requires = ["setuptools", "wheel"]

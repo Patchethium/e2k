@@ -1,26 +1,81 @@
-# English to Katakana Dictionary
+# English to Katakana Translator
 
-It's an extraction of the Wikitionary's Japanese dictionary and `JMdict / EDICT` to create a dictionary of English words and their Katakana representation.
+[![PyPI version](https://badge.fury.io/py/e2k.svg)](https://badge.fury.io/py/e2k)
 
-We also provide a GRU model to convert English to Katakana without a dictionary.
 
-```json
-{"word": "word", "katakana": "ワード"}
-{"word": "another", "katakana": "アナザー"}
-{"word": "example", "katakana": "エグザンプル"}
+`e2k` is a Python library that translates English to Katakana. It's based on a RNN model trained on a dictionary extracted from Wikitionary and JMdict / EDICT. It only requires `numpy` as a dependency.
+
+We also provide a English to Katakana dictionary in the releases (not available in the PyPI package).
+
+## Usage
+
+`e2k` is available on PyPI.
+
+```bash
+pip install e2k
 ```
 
-It's for the further use in Japanese Text-to-Speech applications or Japanese learning.
+Usage:
 
-This README is divided into 2 parts, first about the dictionary extraction and the second part is about the model.
+2 types of models are provided, one converts phoneme to Katakana and one that converts character to Katakana. Choose the one that fits your use case.
+
+```python
+from e2k import P2K, C2K
+from g2p_en import G2p # any g2p library with CMUdict will work
+
+# cmudict phoneme to katakana
+p2k = P2K()
+
+g2p = G2p()
+
+katakana = p2k(g2p("word"))
+
+print(katakana) # "ワード"
+
+# character directly to katakana
+c2k = C2K()
+
+katakana = c2k("word")
+
+print(katakana) # "ワード"
+
+# decode strategy
+# greedy by default, top_k and top_p are available
+# TODO: beam searh
+c2k.set_decode_strategy("top_k", top_k=2) # low quality results, not recommended
+c2k.set_decode_strategy("top_p", top_p=0.6, t=0.8)
+# for further information, see
+# https://huggingface.co/docs/transformers/en/generation_strategies
+print(katakana) # "ワード"
+```
+
+### Performance
+
+The BLEU score is calculated on a random subset with size of 10% of the dataset.
+
+| Model | BLEU Score ↑ |
+| ----- | ------------ |
+| P2K   | 0.87         |
+| C2K   | 0.91         |
 
 ## Dictionary
+
+We train the model on a dictionary extracted from `Wikitionary` and `JMdict / EDICT`. The dictionary contains 30k entries, you can also find it in the releases.
+
+> [!Note]
+> The dictionary is not included in the PyPI package. Either download it from the releases or create it yourself following the instructions below.
 
 ### Dependencies
 
 The extraction script has zero dependencies, as long as you have a Python 3 interpreter it should work.
 
-### Download the data
+However, it's not included in the PyPI package, you need to clone this repository to use it.
+
+```bash
+git clone https://github.com/Patchethium/e2k.git
+```
+
+### Download data
 
 #### Wikitionary
 
@@ -61,59 +116,6 @@ python extract.py --path /path/to/your_file.jsonl
 
 By default, a `katakana_dict.jsonl` file will be created in the `vendor` folder.
 
-## E2K model
-
-We also provide a seq2seq GRU model to convert English automatically to Katakana. It's trained on the aforementioned dictionary.
-
-We provide 2 types of models, one converts phoneme to Katakana and one that converts character to Katakana. Choose the one that fits your use case.
-
-### Usage
-
-`e2k` is available on PyPI.
-
-```bash
-pip install e2k
-```
-
-Usage:
-
-```python
-from e2k import P2K, C2K
-from g2p_en import G2p # or `phonemizer`, as long as it outputs CMUdict phoneme
-
-# cmudict phoneme to katakana
-p2k = P2K()
-
-g2p = G2p()
-
-katakana = p2k(g2p("word"))
-
-print(katakana) # "ワード"
-
-# character directly to katakana
-c2k = C2K()
-
-katakana = c2k("word")
-
-print(katakana) # "ワード"
-
-# decode strategy
-# greedy by default, top_k and top_p are available
-c2k.set_decode_strategy("top_k", top_k=2)
-c2k.set_decode_strategy("top_p", top_p=0.6, t=0.8)
-# top_k and top_p are sampling strategies, which means
-# each time you run the model, you may get different results
-# for further information, see
-# https://huggingface.co/docs/transformers/en/generation_strategies
-# TODO: add beam searh
-print(katakana) # "ワード"
-```
-
-We rewrite the inference of GRU model in `numpy`, minimizing the dependencies to `numpy` only.
-
-> [!Note]
-> The sections below require more than `numpy`, but they're not required for the end user.
-
 ## Development
 
 ### Install the dependencies
@@ -128,17 +130,12 @@ Then activate the virtual environment with `source .venv/bin/activate` or add `u
 
 ### Benchmark
 
+The scores in [Performance](#performance) are obtained using the `eval.py` script.
+
 ```bash
 # --p2k for phoneme to katakana, if not provided, it will be character to katakana
 python eval.py --data ./vendor/katakana_dict.jsonl --model /path/to/your/model.pth --p2k
 ```
-
-| Model | BLEU Score ↑ |
-| ----- | ------------ |
-| P2K   | 0.87         |
-| C2K   | 0.91         |
-
-The BLEU score is calculated on random subset with size of 10% of the dataset.
 
 ### Train
 
@@ -165,14 +162,11 @@ python export.py --model /path/to/your/model.pth --p2k --fp16 --output /path/to/
 ```
 
 > [!Note]
-> The model is not included in the Git registry, I uploaded exported models to the releases, but didn't upload the `pth` format.
-
-> [!Note]
-> The benchmarking/training script is not included in the PyPI package, you'll need to clone this repository to train the model.
+> The pretrained weights are not included in the Git registry, you can find them in the releases.
 
 ## License
 
-The code is released under WTFPL.
+The code is released under WTFPL, you can do WTF you want with it.
 
 The dictionary should follow the [Wikimedia's license](https://dumps.wikimedia.org/legal.html) and the [JMdict / EDICT's Copyright](https://www.edrdg.org/) license.
 
