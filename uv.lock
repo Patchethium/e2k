@@ -95,7 +95,7 @@ sdist = { url = "https://files.pythonhosted.org/packages/5c/1a/883e47df323437aef
 
 [[package]]
 name = "e2k"
-version = "0.2.0"
+version = "0.2.1"
 source = { editable = "." }
 dependencies = [
     { name = "numpy" },
@@ -115,7 +115,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "numpy", specifier = ">=1.0,<2.0" }]
+requires-dist = [{ name = "numpy", specifier = ">=1.0,<3.0" }]
 
 [package.metadata.requires-dev]
 dev = [
