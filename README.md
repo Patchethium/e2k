@@ -145,7 +145,7 @@ After installing the dependencies, `torch` will be added as a development depend
 python train.py --data ./vendor/katakana_dict.jsonl
 ```
 
-It takes around 10 minutes on a desktop CPU. The model will be saved as `vendor/model-{p2k/c2k}-e-{epoch}.pth`.
+It takes around 10 minutes on a desktop CPU. The model will be saved as `vendor/model-{p2k/c2k}-e{epoch}.pth`.
 
 Also, you'll need to either download the `katakana_dict.jsonl` from the releases or create it yourself using the `extract.py` script.
 
