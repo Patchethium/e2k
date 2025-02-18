@@ -155,10 +155,10 @@ The model should be exported to `numpy` format for production use.
 
 ```bash
 # --p2k for phoneme to katakana, if not provided, it will be character to katakana
-# --fp16 for half precision, there's no reason not to use it
+# --fp32 for double precision, by default we use fp16 to save space
 # --output to specify the output file, in this project it's `model-{p2k/c2k}.npz`
 # --safetenors to use safe tensors, it's for easier binding in some languages
-python export.py --model /path/to/your/model.pth --p2k --fp16 --output /path/to/your/model.npz
+python export.py --model /path/to/your/model.pth --p2k --output /path/to/your/model.npz
 ```
 
 > [!Note]

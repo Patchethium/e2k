@@ -140,6 +140,11 @@ class MHA:
 
 class S2S:
     def __init__(self, weights: Dict[str, np.ndarray], max_len: int = 16):
+        # fp32 is usually faster than fp16 on CPU
+        new_weight = {}
+        for k, v in weights.items():
+            new_weight[k] = v.astype(np.float32)
+        weights = new_weight
         self.e_emb = Embedding(weights["e_emb.weight"])
         self.k_emb = Embedding(weights["k_emb.weight"])
         self.encoder = GRU(

@@ -13,7 +13,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--model", type=str, required=True)
 parser.add_argument("--p2k", action="store_true")
 parser.add_argument("--output", type=str, required=True)
-parser.add_argument("--fp16", action="store_true")
+parser.add_argument("--fp32", action="store_true")
 parser.add_argument(
     "--safetensors", action="store_true", help="Use safe tensors instead of numpy"
 )
@@ -24,7 +24,7 @@ model = Model(p2k=args.p2k)
 model.load_state_dict(torch.load(args.model))
 model.eval()
 
-if args.fp16:
+if not args.fp32:
     model = model.half()
 
 weights = {}
