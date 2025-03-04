@@ -28,14 +28,25 @@ p2k = P2K()
 
 g2p = G2p()
 
-katakana = p2k(g2p("word"))
+word = "word"
+
+word = word.lower()
+
+# you can check the accepted symbols using
+in_table = c2k.in_table # `c2k` accepts lowercase characters, space and apostrophe
+in_table = p2k.in_table # `p2k` accepts the phonemes from the CMUdict and space
+# for output symbols
+out_table = c2k.out_table
+out_table = p2k.out_table
+
+katakana = p2k(g2p(word))
 
 print(katakana) # "ワード"
 
-# character directly to katakana
+# characters directly to katakana
 c2k = C2K()
 
-katakana = c2k("word")
+katakana = c2k(word)
 
 print(katakana) # "ワード"
 
@@ -48,6 +59,9 @@ c2k.set_decode_strategy("top_p", top_p=0.6, t=0.8)
 # https://huggingface.co/docs/transformers/en/generation_strategies
 print(katakana) # "ワード"
 ```
+
+> [!WARNING]
+> For any symbols not in the `in_table`, the model will ignore them and may produce unexpected results.
 
 ### Performance
 
