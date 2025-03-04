@@ -95,7 +95,7 @@ sdist = { url = "https://files.pythonhosted.org/packages/5c/1a/883e47df323437aef
 
 [[package]]
 name = "e2k"
-version = "0.2.2"
+version = "0.2.3"
 source = { editable = "." }
 dependencies = [
     { name = "numpy" },

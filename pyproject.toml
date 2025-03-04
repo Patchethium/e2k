@@ -1,6 +1,6 @@
 [project]
 name = "e2k"
-version = "0.2.2"
+version = "0.2.3"
 description = "A tool for automatic English to Katakana conversion"
 readme = "README.md"
 authors = [{ name = "Patchethium", email = "asguftuikh@gmail.com" }]
