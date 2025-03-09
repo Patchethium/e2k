@@ -1,4 +1,4 @@
-from string import ascii_letters
+from string import ascii_lowercase
 
 
 PAD_IDX = 0
@@ -165,7 +165,7 @@ en_phones = [
     "ZH",
 ]
 
-ascii_entries = ["<pad>", "<sos>", "<eos>"] + list(ascii_letters) + [" "]
+ascii_entries = ["<pad>", "<sos>", "<eos>"] + list(ascii_lowercase) + [" ", "'"]
 
 kanas = ["<pad>", "<sos>", "<eos>"] + kanas
-en_phones = ["<pad>", "<sos>", "<eos>"] + en_phones + [" "]
+en_phones = ["<pad>", "<sos>", "<eos>"] + en_phones + [" ", "'"]

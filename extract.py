@@ -12,9 +12,8 @@ import re
 from collections import defaultdict
 from typing import Dict, List
 import argparse
-from string import ascii_letters
+from e2k.constants import ascii_entries
 
-ascii_letters = ascii_letters + " "
 
 katakana_re = re.compile(r"[\u30A1-\u30F4\u30FC]+")
 en_re = re.compile(r"[a-zA-Z\-\s\+]+")
@@ -54,7 +53,7 @@ def extract_wiki(path) -> Dict[str, List[str]]:
                 if (
                     len(en_word) > 20
                     or len(en_word) < 2
-                    or any([c not in ascii_letters for c in en_word])
+                    or any([c not in ascii_entries for c in en_word])
                 ):
                     continue
                 if en_word:
@@ -114,7 +113,7 @@ def extract_jmdict(path) -> Dict[str, List[str]]:
                     len(n_kanas) == 0,
                     len(en_word) < 2,
                     en_word.count(" ") >= 2,
-                    any([c not in ascii_letters for c in en_word]),
+                    any([c not in ascii_entries for c in en_word]),
                 ]
             ):
                 continue

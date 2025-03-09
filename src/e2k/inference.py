@@ -314,7 +314,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     p2k = P2K()
     c2k = C2K()
-    word = "gutenberg"
+    word = "vordhosbn"
     phonemes = g2p(word)
     print(word)
     print("P2K: ", p2k(phonemes))

@@ -52,7 +52,7 @@ print(katakana) # "ワード"
 
 # decode strategy
 # greedy by default, top_k and top_p are available
-# TODO: beam searh
+# I tried implementing beam search but it barely differs from greedy
 c2k.set_decode_strategy("top_k", top_k=2) # low quality results, not recommended
 c2k.set_decode_strategy("top_p", top_p=0.6, t=0.8)
 # for further information, see
@@ -69,8 +69,8 @@ The BLEU score is calculated on a random subset with size of 10% of the dataset.
 
 | Model | BLEU Score ↑ |
 | ----- | ------------ |
-| P2K   | 0.87         |
-| C2K   | 0.91         |
+| P2K   | 0.89         |
+| C2K   | 0.92         |
 
 ## Dictionary
 

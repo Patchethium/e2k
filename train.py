@@ -206,14 +206,10 @@ def train():
 
     model = Model(p2k=args.p2k).to(device)
     dataset = MyDataset(args.data, device, p2k=args.p2k)
-    train_ds, val_ds = random_split(dataset, [0.9, 0.1])
+    train_ds, val_ds = random_split(dataset, [0.95, 0.05])
 
-    train_dl = DataLoader(
-        train_ds, batch_size=64, shuffle=True, collate_fn=collate_fn, drop_last=True
-    )
-    val_dl = DataLoader(
-        val_ds, batch_size=64, shuffle=True, collate_fn=collate_fn, drop_last=True
-    )
+    train_dl = DataLoader(train_ds, batch_size=64, shuffle=True, collate_fn=collate_fn)
+    val_dl = DataLoader(val_ds, batch_size=64, shuffle=True, collate_fn=collate_fn)
 
     criterion = nn.CrossEntropyLoss(ignore_index=0)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
