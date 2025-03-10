@@ -2,6 +2,7 @@
 # English phonemes
 import json
 import argparse
+from functools import partial
 from os import path
 from random import randint
 
@@ -73,7 +74,7 @@ class Model(nn.Module):
         h2 = None
         count = 0
         while res[-1] != eos_idx and count < 16:
-            dec = torch.tensor([res[-1]]).unsqueeze(0)
+            dec = torch.tensor([res[-1]]).unsqueeze(0).to(src.device)
             dec_emb = self.k_emb(dec)
             dec_out, h1 = self.pre_decoder(dec_emb, h1)
             attn_out, _ = self.attn(dec_out, enc_out, enc_out)
@@ -81,7 +82,7 @@ class Model(nn.Module):
             x, h2 = self.post_decoder(x, h2)
             x = self.fc(x)
             idx = torch.argmax(x, dim=-1)
-            res.append(idx.item())
+            res.append(idx.cpu().item())
             count += 1
         return res
 
@@ -170,7 +171,7 @@ def lens2mask(lens, max_len):
     return mask
 
 
-def collate_fn(batch):
+def collate_fn(batch, device):
     engs = [x[0] for x in batch]
     katas = [x[1] for x in batch]
     eng_lens = [len(x) for x in engs]
@@ -179,6 +180,9 @@ def collate_fn(batch):
     kata_mask = lens2mask(kata_lens, max(kata_lens))
     engs = pad_sequence(engs, batch_first=True, padding_value=0)
     katas = pad_sequence(katas, batch_first=True, padding_value=0)
+    engs, katas, eng_mask, kata_mask = [
+        x.to(device) for x in [engs, katas, eng_mask, kata_mask]
+    ]
     return engs, katas, eng_mask, kata_mask
 
 
@@ -208,8 +212,8 @@ def train():
     dataset = MyDataset(args.data, device, p2k=args.p2k)
     train_ds, val_ds = random_split(dataset, [0.95, 0.05])
 
-    train_dl = DataLoader(train_ds, batch_size=64, shuffle=True, collate_fn=collate_fn)
-    val_dl = DataLoader(val_ds, batch_size=64, shuffle=True, collate_fn=collate_fn)
+    train_dl = DataLoader(train_ds, batch_size=64, shuffle=True, collate_fn=partial(collate_fn, device=device))
+    val_dl = DataLoader(val_ds, batch_size=64, shuffle=True, collate_fn=partial(collate_fn, device=device))
 
     criterion = nn.CrossEntropyLoss(ignore_index=0)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)

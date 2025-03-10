@@ -21,7 +21,7 @@ dev = [
     "g2p-en>=2.1.0",
     "safetensors>=0.5.2",
     "tensorboard>=2.18.0",
-    "torch>=2.6.0",
+    "torch>=2.5.0",
     "torcheval>=0.0.7",
     "tqdm>=4.67.1",
 ]
