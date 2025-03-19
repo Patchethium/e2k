@@ -7,6 +7,8 @@ from tqdm.auto import tqdm
 from train import Model, MyDataset, random_split, SEED
 from e2k import kanas
 
+acc_idx = kanas.index("<acc>")
+
 parser = argparse.ArgumentParser()
 
 parser.add_argument("--data", type=str, default="data.jsonl")
@@ -44,11 +46,11 @@ class Accuracy:
         return (self.acc / self.count) if self.count > 0 else 0
 
 def tensor2str(t):
-    return " ".join([str(int(x)) for x in t])
+    idx = [int(x) for x in t]
+    idx = list(filter(lambda x: x != acc_idx, idx))
+    return " ".join([str(i) for i in idx])
 
 accuracy = Accuracy()
-
-acc_idx = kanas.index("<acc>")
 
 for i in tqdm(range(len(val_ds))):
     eng, kata = val_ds[i]

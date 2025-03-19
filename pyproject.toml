@@ -26,16 +26,34 @@ dev = [
     "tqdm>=4.67.1",
 ]
 
+[project.optional-dependencies]
+cpu = [
+  "torch>=2.5.0",
+]
+cu121 = [
+  "torch>=2.5.0",
+]
+
+[tool.uv]
+conflicts = [
+  [
+    { extra = "cpu" },
+    { extra = "cu121" },
+  ],
+]
+
 [tool.uv.sources]
-torch = [{ index = "pytorch-cpu" }]
+torch = [
+  { index = "pytorch-cpu", extra = "cpu" },
+  { index = "pytorch-cu121", extra = "cu121" },
+]
 
 [[tool.uv.index]]
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
-[tool.setuptools.packages.find]
-where = ["src"]
-
-[tool.setuptools.package-data]
-e2k = ["models/*.npz"]
+[[tool.uv.index]]
+name = "pytorch-cu121"
+url = "https://download.pytorch.org/whl/cu121"
+explicit = true
