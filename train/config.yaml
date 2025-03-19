@@ -1,0 +1,12 @@
+model:
+  dim: 256
+  n_heads: 4
+  dropout: 0.2
+
+train:
+  batch_size: 64
+  lr: 1.0e-3
+  max_epochs: 10
+  decay: 0.9
+  log_interval: 100
+  num_workers: 4

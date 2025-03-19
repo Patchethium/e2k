@@ -3,7 +3,19 @@
 [![PyPI version](https://badge.fury.io/py/e2k.svg)](https://badge.fury.io/py/e2k)
 
 
-`e2k` is a Python library that translates English to Katakana. It's based on a RNN model trained on a dictionary extracted from Wikitionary and JMdict / EDICT. It only requires `numpy` as a dependency.
+<details title="Other languages">
+<summary>Other</summary>
+
+[日本語 README](README.ja.md)
+</details>
+
+
+> [!WARNING]  
+> For users from 0.3.0: 0.4.0 is a complete rewrite, the API and the model embeddings are changed, we also combine the P2K with C2k. Please be arware when upgrading.
+
+`e2k` is a Python library that translates English to Katakana. It's based on a RNN model trained on a dictionary extracted from Wikitionary and JMdict / EDICT, along with auxiliary output from the Amepd english phoneme dictionary.
+
+It only needs `numpy` as a dependency.
 
 We also provide a English to Katakana dictionary in the releases (not available in the PyPI package).
 
@@ -214,7 +226,7 @@ python export.py --model /path/to/your/model.pth --p2k --output /path/to/your/mo
 
 ## License
 
- - The code is released under WTFPL, you can do WTF you want with it.
+ - The code is released under WTFPL, you just do WTF you want with it.
  - The dictionary follows the [Wikimedia's license](https://dumps.wikimedia.org/legal.html) and the [JMdict / EDICT's Copyright](https://www.edrdg.org/) license.
    - In short, they both fall into CC-BY-SA.
    - The model weights are trained using the dictionary. I am not a lawyer, whether the machine learning weights is considered as a derivative work is up to you.

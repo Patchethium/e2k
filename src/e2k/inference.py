@@ -2,7 +2,7 @@
 import numpy as np
 from typing import Optional, Dict
 import importlib.resources
-from e2k.constants import SOS_IDX, EOS_IDX, en_phones, kanas, ascii_entries
+from e2k.constants import SOS_IDX, EOS_IDX, en_phones, kanas, src_tokens
 from functools import partial
 
 
@@ -301,7 +301,7 @@ class C2K(BaseE2K):
     def __init__(self, max_len: int = 16):
         weights = np.load(get_weight_path("model-c2k.npz"), allow_pickle=True)
         self.s2s = S2S(weights, max_len)
-        self.in_table = {c: i for i, c in enumerate(ascii_entries)}
+        self.in_table = {c: i for i, c in enumerate(src_tokens)}
         self.out_table = {i: c for i, c in enumerate(kanas)}
 
 

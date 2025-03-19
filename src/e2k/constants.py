@@ -1,9 +1,13 @@
 from string import ascii_lowercase
 
 
-PAD_IDX = 0
 SOS_IDX = 1
 EOS_IDX = 2
+
+_p = "<pad>"
+_s = "<sos>"
+_e = "<eos>"
+_c = "<cot>"
 
 kanas = [
     "ァ",
@@ -109,6 +113,8 @@ en_phones = [
     "AW0",
     "AW1",
     "AW2",
+    "AX",
+    "AXR",
     "AY0",
     "AY1",
     "AY2",
@@ -165,7 +171,6 @@ en_phones = [
     "ZH",
 ]
 
-ascii_entries = ["<pad>", "<sos>", "<eos>"] + list(ascii_lowercase) + [" ", "'"]
+src_tokens = [_p, _s, _e] + list(ascii_lowercase) + [" ", "'"]
 
-kanas = ["<pad>", "<sos>", "<eos>"] + kanas
-en_phones = ["<pad>", "<sos>", "<eos>"] + en_phones + [" ", "'"]
+tgt_tokens = [_p, _s, _e, _c] + en_phones + kanas
