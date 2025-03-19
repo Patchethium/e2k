@@ -167,5 +167,5 @@ en_phones = [
 
 ascii_entries = ["<pad>", "<sos>", "<eos>"] + list(ascii_lowercase) + [" ", "'"]
 
-kanas = ["<pad>", "<sos>", "<eos>"] + kanas
+kanas = ["<pad>", "<sos>", "<eos>", "<acc>"] + kanas
 en_phones = ["<pad>", "<sos>", "<eos>"] + en_phones + [" ", "'"]
