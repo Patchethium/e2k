@@ -165,37 +165,15 @@ Also, you'll need to either download the `katakana_dict.jsonl` from the releases
 
 #### CUDA
 
-Although `uv` claims to be able to control `torch` version by extras, it doesn't work out in practice. 
-For now you need to manually edit the `pyproject.toml` file for CUDA support.
+The `cpu` version is capable to train this little model, if you prefer to use GPU, use `--extra` to install the `torch` with CUDA support,
 
-Change
-```toml
-[tool.uv.sources]
-torch = [{ index = "pytorch-cpu" }]
-
-[[tool.uv.index]]
-name = "pytorch-cpu"
-url = "https://download.pytorch.org/whl/cpu"
-explicit = true
+```bash
+uv sync --extra cu124
+# or
+uv sync --extra cu121
 ```
 
-To:
-```toml
-[tool.uv.sources]
-torch = [{ index = "pytorch-cu121" }]
-
-[[tool.uv.index]]
-name = "pytorch-cu121"
-url = "https://download.pytorch.org/whl/cu121"
-explicit = true
-```
-
-And run `uv lock && uv sync` to update the dependencies.
-
-Be noted not to commit the changes to the `pyproject.toml` and `uv.lock` files if you made the change.
-
-> [!Note]
-> Yes it sucks, especially when you need to add other dependencies. I'm always looking for a better solution, PRs are welcome.
+depending on your CUDA version.
 
 ### Export
 
