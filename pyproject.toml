@@ -28,7 +28,7 @@ dev = [
 
 [project.optional-dependencies]
 cpu = ["torch>=2.6.0"]
-cu121 = ["torch>=2.6.0"]
+cu121 = ["torch>=2.5.0"]
 cu124 = ["torch>=2.6.0"]
 
 [tool.uv]
