@@ -28,36 +28,33 @@ p2k = P2K()
 
 g2p = G2p()
 
-word = "word"
+word = "vordhosbn" # track 2 from Aphex Twin's "Drukqs"
 
 word = word.lower()
 
-# you can check the accepted symbols using
-in_table = c2k.in_table # `c2k` accepts lowercase characters, space and apostrophe
-in_table = p2k.in_table # `p2k` accepts the phonemes from the CMUdict and space
-# for output symbols
-out_table = c2k.out_table
-out_table = p2k.out_table
-
 katakana = p2k(g2p(word))
 
-print(katakana) # "ワード"
+print(katakana) # "ボードヒッチン"
 
 # characters directly to katakana
 c2k = C2K()
 
 katakana = c2k(word)
 
-print(katakana) # "ワード"
+print(katakana) # "ボードホスン"
 
-# decode strategy
-# greedy by default, top_k and top_p are available
-# I tried implementing beam search but it barely differs from greedy
-c2k.set_decode_strategy("top_k", top_k=2) # low quality results, not recommended
-c2k.set_decode_strategy("top_p", top_p=0.6, t=0.8)
-# for further information, see
-# https://huggingface.co/docs/transformers/en/generation_strategies
-print(katakana) # "ワード"
+# we provide top_k and top_p decoding strategies
+katakana = c2k(word, "top_k", k=5) # top_k sampling
+katakana = c2k(word, "top_p", p=0.9, t=2) # top_p sampling
+# see https://huggingface.co/docs/transformers/en/generation_strategies
+# for more details
+
+# you can check the accepted symbols using
+in_table = c2k.in_table # `c2k` accepts lowercase characters, space and apostrophe
+in_table = p2k.in_table # `p2k` accepts phonemes from the CMUdict and space
+# for output symbols
+out_table = c2k.out_table
+out_table = p2k.out_table
 ```
 
 > [!WARNING]
