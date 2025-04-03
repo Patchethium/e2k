@@ -15,7 +15,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from g2p_en import G2p
 
-from e2k.constants import kanas, en_phones, ascii_entries, PAD_IDX, SOS_IDX, EOS_IDX
+from hp import kanas, en_phones, ascii_entries, PAD_IDX, SOS_IDX, EOS_IDX
 
 
 SEED = 3407

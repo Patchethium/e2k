@@ -1,18 +1,16 @@
 [project]
 name = "e2k"
-version = "0.3.0"
+version = "0.4.1"
 description = "A tool for automatic English to Katakana conversion"
 readme = "README.md"
 authors = [{ name = "Patchethium", email = "asguftuikh@gmail.com" }]
 requires-python = ">=3.10"
 dependencies = ["numpy>=1.0,<3.0"]
+license-files = ["LICENSE"]
 
 [build-system]
 requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
-
-[tool.setuptools]
-license-files = []
 
 [dependency-groups]
 dev = [
@@ -55,3 +53,9 @@ explicit = true
 name = "pytorch-cu124"
 url = "https://download.pytorch.org/whl/cu124"
 explicit = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+e2k = ["models/*.npz"]

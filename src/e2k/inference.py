@@ -1,8 +1,7 @@
 # Description: Inference functions for the E2K model in numpy
 import numpy as np
-from typing import Optional, Dict
+from typing import Callable, Literal, Optional, Dict
 import importlib.resources
-from e2k.constants import SOS_IDX, EOS_IDX, en_phones, kanas, ascii_entries
 from functools import partial
 
 
@@ -138,13 +137,56 @@ class MHA:
         return self.o_proj.forward(o)
 
 
+def greedy(step_dec: np.ndarray):
+    """
+    step_dec: [N]
+    """
+    return np.argmax(step_dec, axis=-1)
+
+
+def top_k(step_dec: np.ndarray, k: int):
+    """
+    step_dec: [N]
+    """
+    candidates = np.flip(np.argsort(step_dec, axis=-1), axis=-1)[:k]
+    return np.random.choice(candidates)
+
+
+def top_p(step_dec: np.ndarray, p: float, t: float):
+    """
+    step_dec: [N]
+    p: max probability
+    t: temperature
+    """
+    # softmax
+    step_dec = np.exp(step_dec) / t
+    step_dec = step_dec / step_dec.sum()
+    sorted_idx = np.flip(np.argsort(step_dec, axis=-1), axis=-1)
+    i = 0
+    cumsum = 0
+    while cumsum < p:
+        cumsum += step_dec[sorted_idx[i]]
+        i += 1
+    candidates = sorted_idx[:i]
+    return np.random.choice(candidates)
+
+
 class S2S:
     def __init__(self, weights: Dict[str, np.ndarray], max_len: int = 16):
         # fp32 is usually faster than fp16 on CPU
         new_weight = {}
         for k, v in weights.items():
-            new_weight[k] = v.astype(np.float32)
+            if v.dtype == np.float16:
+                new_weight[k] = v.astype(np.float32)
+            else:
+                new_weight[k] = v
         weights = new_weight
+        metadata = weights["metadata"].item()
+        self.sos_idx = int(metadata["sos_idx"])
+        self.eos_idx = int(metadata["eos_idx"])
+        self.in_table = list(metadata["in_table"].split("\0"))
+        self.out_table = list(metadata["out_table"].split("\0"))
+
         self.e_emb = Embedding(weights["e_emb.weight"])
         self.k_emb = Embedding(weights["k_emb.weight"])
         self.encoder = GRU(
@@ -192,52 +234,8 @@ class S2S:
         )
         self.fc = Linear(weights["fc.weight"], weights["fc.bias"])
         self.max_len = max_len
-        self.decode = self.greedy
 
-    def greedy(self, step_dec: np.ndarray):
-        """
-        step_dec: [N]
-        """
-        return np.argmax(step_dec, axis=-1)
-
-    def top_k(self, step_dec: np.ndarray, k: int):
-        """
-        step_dec: [N]
-        """
-        candidates = np.flip(np.argsort(step_dec, axis=-1), axis=-1)[:k]
-        return np.random.choice(candidates)
-
-    def top_p(self, step_dec: np.ndarray, p: float, t: float):
-        """
-        step_dec: [N]
-        p: max probability
-        t: temperature
-        """
-        # softmax
-        step_dec = np.exp(step_dec) / t
-        step_dec = step_dec / step_dec.sum()
-        sorted_idx = np.flip(np.argsort(step_dec, axis=-1), axis=-1)
-        i = 0
-        cumsum = 0
-        while cumsum < p:
-            cumsum += step_dec[sorted_idx[i]]
-            i += 1
-        candidates = sorted_idx[:i]
-        return np.random.choice(candidates)
-
-    def set_decode_strategy(self, strategy: str, **kwargs):
-        if strategy == "greedy":
-            self.decode = self.greedy
-        elif strategy == "top_k":
-            self.decode = partial(self.top_k, k=kwargs.get("k", 3))
-        elif strategy == "top_p":
-            self.decode = partial(
-                self.top_p, p=kwargs.get("p", 0.9), t=kwargs.get("t", 1)
-            )
-        else:
-            raise ValueError("Invalid decode strategy")
-
-    def forward(self, src):
+    def forward(self, src, decoder: Callable) -> np.ndarray:
         """
         In numpy, only inference is supported.
         """
@@ -247,7 +245,7 @@ class S2S:
         enc_out = np.concatenate([enc_out, enc_out_rev], axis=-1)
         enc_out = self.encoder_fc.forward(enc_out)
         enc_out = tanh(enc_out)
-        res = [SOS_IDX]
+        res = [self.sos_idx]
         h1 = None
         h2 = None
         for _ in range(self.max_len):
@@ -258,28 +256,54 @@ class S2S:
             x, h2 = self.post_decoder.forward(x, h2)
             x = self.fc.forward(x)
             x = x[0]
-            res.append(self.decode(x))
-            if res[-1] == EOS_IDX:
+            res.append(decoder(x))
+            if res[-1] == self.eos_idx:
                 break
         return res
 
 
+type Strategy = Literal["greedy", "top_k", "top_p"]
+
+
 class BaseE2K:
-    def __init__(self):
-        self.s2s = None
-        self.in_table = None
-        self.out_table = None
-        raise NotImplementedError
+    def __init__(self, name: str, max_len: int = 16):
+        data = np.load(get_weight_path(name), allow_pickle=True)
+        self.s2s = S2S(data, max_len)
+        self.in_table = {c: i for i, c in enumerate(self.s2s.in_table)}
+        self.out_table = self.s2s.out_table
 
     def set_decode_strategy(self, strategy: str, **kwargs):
         self.s2s.set_decode_strategy(strategy, **kwargs)
 
-    def __call__(self, src: str) -> str:
+    def __call__(
+        self,
+        src: str,
+        strategy: Optional[str] = None,
+        *,
+        k: Optional[int] = None,
+        p: Optional[float] = None,
+        t: Optional[float] = None,
+    ) -> str:
         src = list(filter(lambda x: x in self.in_table, src))
         src = [self.in_table[c] for c in src]
-        src = [SOS_IDX] + src + [EOS_IDX]
+        src = [self.s2s.sos_idx] + src + [self.s2s.eos_idx]
         src = np.array(src)
-        tgt = self.s2s.forward(src)
+        match strategy:
+            case "greedy" | None:
+                tgt = self.s2s.forward(src, greedy)
+            case "top_k":
+                tgt = self.s2s.forward(src, partial(top_k, k=k if k is not None else 2))
+            case "top_p":
+                tgt = self.s2s.forward(
+                    src,
+                    partial(
+                        top_p,
+                        p=p if p is not None else 0.9,
+                        t=t if t is not None else 1.0,
+                    ),
+                )
+            case _:
+                raise ValueError(f"Unknown decoding strategy: {strategy=}")
         tgt = [int(v) for v in tgt[1:-1]]
         tgt = [self.out_table[c] for c in tgt]
         return "".join(tgt)
@@ -291,18 +315,12 @@ def get_weight_path(filename) -> str:
 
 class P2K(BaseE2K):
     def __init__(self, max_len: int = 16):
-        weights = np.load(get_weight_path("model-p2k.npz"), allow_pickle=True)
-        self.s2s = S2S(weights, max_len)
-        self.in_table = {c: i for i, c in enumerate(en_phones)}
-        self.out_table = {i: c for i, c in enumerate(kanas)}
+        super().__init__("model-p2k.npz", max_len)
 
 
 class C2K(BaseE2K):
     def __init__(self, max_len: int = 16):
-        weights = np.load(get_weight_path("model-c2k.npz"), allow_pickle=True)
-        self.s2s = S2S(weights, max_len)
-        self.in_table = {c: i for i, c in enumerate(ascii_entries)}
-        self.out_table = {i: c for i, c in enumerate(kanas)}
+        super().__init__("model-c2k.npz", max_len)
 
 
 if __name__ == "__main__":
@@ -319,11 +337,7 @@ if __name__ == "__main__":
     print(word)
     print("P2K: ", p2k(phonemes))
     print("C2K: ", c2k(word))
-    p2k.set_decode_strategy("top_k", k=2)
-    c2k.set_decode_strategy("top_k", k=2)
-    print("P2K (top_k): ", p2k(phonemes))
-    print("C2K (top_k): ", c2k(word))
-    p2k.set_decode_strategy("top_p", p=0.3, t=2)
-    c2k.set_decode_strategy("top_p", p=0.3, t=2)
-    print("P2K (top_p): ", p2k(phonemes))
-    print("C2K (top_p): ", c2k(word))
+    print("P2K (top_k): ", p2k(phonemes, "top_k", k=2))
+    print("C2K (top_k): ", c2k(word, "top_k", k=2))
+    print("P2K (top_p): ", p2k(phonemes, "top_p", p=0.7, t=2))
+    print("C2K (top_p): ", c2k(word, "top_p", p=0.7, t=2))

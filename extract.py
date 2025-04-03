@@ -12,7 +12,7 @@ import re
 from collections import defaultdict
 from typing import Dict, List
 import argparse
-from e2k.constants import ascii_entries
+from hp import ascii_entries
 
 
 katakana_re = re.compile(r"[\u30A1-\u30F4\u30FC]+")
