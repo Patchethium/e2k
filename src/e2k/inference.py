@@ -262,9 +262,6 @@ class S2S:
         return res
 
 
-type Strategy = Literal["greedy", "top_k", "top_p"]
-
-
 class BaseE2K:
     def __init__(self, name: str, max_len: int = 16):
         data = np.load(get_weight_path(name), allow_pickle=True)
@@ -278,7 +275,7 @@ class BaseE2K:
     def __call__(
         self,
         src: str,
-        strategy: Optional[str] = None,
+        strategy: Optional[Literal["greedy", "top_k", "top_p"]] = None,
         *,
         k: Optional[int] = None,
         p: Optional[float] = None,
