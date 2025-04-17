@@ -62,7 +62,7 @@ out_table = p2k.out_table
 
 ### Pitch Accent Prediction
 
-We also provide an RNN model for pitch accent prediction. It's trained on about 700k entries from Unidic CWJ. You can use it independently for any katakana sequences.
+We also provide an RNN model for pitch accent prediction. It's trained on about 700k entries from [Unidic](https://clrd.ninjal.ac.jp/unidic/). You can use it independently for any katakana sequences.
 
 ```python
 from e2k import AccentPredictor as Ap
