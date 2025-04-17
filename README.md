@@ -66,9 +66,9 @@ We also provide an RNN model for pitch accent prediction. It's trained on about 
 
 ```python
 from e2k import AccentPredictor as Ap
-from e2k import C2k
+from e2k import C2K
 
-c2k = C2k()
+c2k = C2K()
 ap = Ap()
 
 word = "geogaddi"
