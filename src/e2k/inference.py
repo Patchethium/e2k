@@ -1,32 +1,33 @@
 # Description: Inference functions for the E2K model in numpy
 import numpy as np
-from typing import Callable, Literal, Optional, Dict
+from typing import Callable, Literal, Optional, Dict, Tuple
 import importlib.resources
 from functools import partial
+import math
 
 
 class Linear:
-    def __init__(self, weight, bias):
+    def __init__(self, weight, bias) -> None:
         self.weight = weight
         self.bias = bias
 
-    def forward(self, x):
+    def forward(self, x: np.ndarray) -> np.ndarray:
         return np.matmul(x, self.weight.T) + self.bias
 
 
 class Embedding:
-    def __init__(self, weight):
+    def __init__(self, weight) -> None:
         self.weight = weight
 
-    def forward(self, x):
+    def forward(self, x: np.ndarray) -> np.ndarray:
         return self.weight[x]
 
 
-def sigmoid(x):
+def sigmoid(x: np.ndarray) -> np.ndarray:
     return 1 / (1 + np.exp(-x))
 
 
-def tanh(x):
+def tanh(x: np.ndarray) -> np.ndarray:
     return np.tanh(x)
 
 
@@ -35,7 +36,7 @@ class GRUCell:
         self.ih = Linear(weight_ih, bias_ih)
         self.hh = Linear(weight_hh, bias_hh)
 
-    def forward(self, x: np.ndarray, h: Optional[np.ndarray] = None):
+    def forward(self, x: np.ndarray, h: Optional[np.ndarray] = None) -> np.ndarray:
         """
         x: [D]
         h: [D]
@@ -72,7 +73,9 @@ class GRU:
         self.cell = cell
         self.reverse = reverse
 
-    def forward(self, x, h: Optional[np.ndarray] = None):
+    def forward(
+        self, x, h: Optional[np.ndarray] = None
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
         x: [T, D], unbatched
         """
@@ -100,7 +103,7 @@ class MHA:
         out_proj_weight,
         out_proj_bias,
         num_heads: int,
-    ):
+    ) -> None:
         [q_w, k_w, v_w] = np.split(in_proj_weight, 3, axis=0)
         [q_b, k_b, v_b] = np.split(in_proj_bias, 3, axis=0)
         self.dim = q_w.shape[-1]
@@ -112,7 +115,7 @@ class MHA:
         self.d_heads = self.dim // num_heads
         self.scale = np.sqrt(self.dim)
 
-    def forward(self, q: np.ndarray, k: np.ndarray, v: np.ndarray):
+    def forward(self, q: np.ndarray, k: np.ndarray, v: np.ndarray) -> np.ndarray:
         """
         q: [T, D]
         k: [T, D]
@@ -320,6 +323,51 @@ class C2K(BaseE2K):
         super().__init__("model-c2k.npz", max_len)
 
 
+class AccentPredictor:
+    def __init__(self):
+        name = "accent.npz"
+        weights = np.load(get_weight_path(name), allow_pickle=True)
+        metadata = weights["metadata"].item()
+        self.symbols = list(metadata["in_table"].split("\0"))
+        self.in_table = {c: i for i, c in enumerate(self.symbols)}
+        self.emb = Embedding(weights["emb.weight"])
+        self.rnn = GRU(
+            GRUCell(
+                weights["rnn.weight_ih_l0"],
+                weights["rnn.weight_hh_l0"],
+                weights["rnn.bias_ih_l0"],
+                weights["rnn.bias_hh_l0"],
+            )
+        )
+        self.rnn_rev = GRU(
+            GRUCell(
+                weights["rnn.weight_ih_l0_reverse"],
+                weights["rnn.weight_hh_l0_reverse"],
+                weights["rnn.bias_ih_l0_reverse"],
+                weights["rnn.bias_hh_l0_reverse"],
+            )
+        )
+        self.head = Linear(weights["head.weight"], weights["head.bias"])
+
+    def forward(self, x: str) -> int:
+        """
+        x: [T]
+        """
+        x = [self.in_table[c] for c in x]
+        x = np.array(x)
+        x = self.emb.forward(x)  # [T,N]
+        _, hf = self.rnn.forward(x, None)  # [N]
+        _, hr = self.rnn_rev.forward(x, None)  # [N]
+        h = np.concat([hf, hr], axis=0)
+        h = self.head.forward(h)
+        h = h[0] * x.shape[0]
+        h = int(h + 0.5)  # round operation
+        return h
+
+    def __call__(self, x: str) -> int:
+        return self.forward(x)
+
+
 if __name__ == "__main__":
     import argparse
     from g2p_en import G2p
@@ -329,7 +377,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     p2k = P2K()
     c2k = C2K()
-    word = "vordhosbn"
+    word = "geogaddi"
     phonemes = g2p(word)
     print(word)
     print("P2K: ", p2k(phonemes))
@@ -338,3 +386,9 @@ if __name__ == "__main__":
     print("C2K (top_k): ", c2k(word, "top_k", k=2))
     print("P2K (top_p): ", p2k(phonemes, "top_p", p=0.7, t=2))
     print("C2K (top_p): ", c2k(word, "top_p", p=0.7, t=2))
+
+    katakana = c2k(word)
+    ap = AccentPredictor()
+    print(f"C2K Katakana: {katakana}, Accent: {ap(katakana)}")
+    katakana = p2k(phonemes)
+    print(f"P2K Katakana: {katakana}, Accent: {ap(katakana)}")

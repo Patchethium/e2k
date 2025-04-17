@@ -60,16 +60,50 @@ out_table = p2k.out_table
 > [!WARNING]
 > For any symbols not in the `in_table`, the model will ignore them and may produce unexpected results.
 
-### Performance
+### Pitch Accent Prediction
 
-The BLEU score is calculated on a random subset with size of 10% of the dataset.
+We also provide an RNN model for pitch accent prediction. It's trained on about 300k entries from Unidic CWJ. You can use it independently for any katakana sequences.
+
+```python
+from e2k import AccentPredictor as Ap
+from e2k import C2k
+
+c2k = C2k()
+ap = Ap()
+
+word = "geogaddi"
+
+katakana = c2k(word)
+
+accent = ap(katakana)
+
+print(f"Katakana: {katakana}, Accent: {accent}")
+# Katakana: ジオガディ, Accent: 3
+
+# you can also check its in-table
+in_table = ap.in_table # it's katakana without special tokens
+```
+
+## Performance
+
+### Katakana Prediction
+
+We evaluate BLEU score on 10% of the dataset.
 
 | Model | BLEU Score ↑ |
 | ----- | ------------ |
 | P2K   | 0.89         |
 | C2K   | 0.92         |
 
-## Dictionary
+### Accent Prediction
+
+We evaluate accuracy on 10% of the dataset.
+
+| Model   | Accuracy ↑ |
+| ------- | ---------- |
+| Default | 88.4%      |
+
+## Katakana Dictionary
 
 We train the model on a dictionary extracted from `Wikitionary` and `JMdict / EDICT`. The dictionary contains 30k entries, you can also find it in the releases.
 
@@ -78,7 +112,7 @@ We train the model on a dictionary extracted from `Wikitionary` and `JMdict / ED
 
 ### Dependencies
 
-The extraction script has zero dependencies, as long as you have a Python 3 interpreter it should work.
+The **extraction script** has zero dependencies, as long as you have a Python 3 interpreter it should work.
 
 However, it's not included in the PyPI package, you need to clone this repository to use it.
 
@@ -126,6 +160,24 @@ python extract.py --path /path/to/your_file.jsonl
 ```
 
 By default, a `katakana_dict.jsonl` file will be created in the `vendor` folder.
+
+## Accent Dictionary
+
+Go to [Unidic's homepage](https://clrd.ninjal.ac.jp/unidic/back_number.html) and look for entry `unidic-mecab-2.1.2_src.zip` and download.
+
+Or in commandline, `wget https://clrd.ninjal.ac.jp/unidic_archive/cwj/2.1.2/unidic-mecab-2.1.2_src.zip`.
+
+### Extraction
+
+Extract the zip file and place the `lex.csv` into `vendor`.
+
+### Training
+
+To train the accent predictor, simply run
+
+```bash
+python accent.py
+```
 
 ## Development
 
@@ -181,6 +233,7 @@ The model should be exported to `numpy` format for production use.
 # --fp32 for double precision, by default we use fp16 to save space
 # --output to specify the output file, in this project it's `model-{p2k/c2k}.npz`
 # --safetenors to use safe tensors, it's for easier binding in some languages
+# --accent to extract accent predictor, in this project the model name is `accent.npz`
 python export.py --model /path/to/your/model.pth --p2k --output /path/to/your/model.npz
 ```
 
@@ -193,8 +246,10 @@ python export.py --model /path/to/your/model.pth --p2k --output /path/to/your/mo
  - The dictionary follows the [Wikimedia's license](https://dumps.wikimedia.org/legal.html) and the [JMdict / EDICT's Copyright](https://www.edrdg.org/) license.
    - In short, they both fall into CC-BY-SA.
    - The model weights are trained using the dictionary. I am not a lawyer, whether the machine learning weights is considered as a derivative work is up to you.
+ - The accent predictor model is trained using Unidic, it can be used under the GPLv2.0/LGPLv2.1/Modified BSD at your choice. See [their page](https://clrd.ninjal.ac.jp/unidic/commerce_use.html) for further information.
 
 ## Credits
 
 - [Wikitionary](https://www.wiktionary.org/)
 - [JMdict / EDICT](http://www.edrdg.org/jmdict/edict.html)
+- [Unidic](https://clrd.ninjal.ac.jp/unidic/)

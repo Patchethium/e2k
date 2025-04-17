@@ -7,6 +7,7 @@ import torch
 from safetensors.numpy import save_file
 import argparse
 from train import Model
+from accent import AccentPredictor
 from hp import kanas, en_phones, ascii_entries, SOS_IDX, EOS_IDX, PAD_IDX
 
 if __name__ == "__main__":
@@ -19,13 +20,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--safetensors", action="store_true", help="Use safe tensors instead of numpy"
     )
+    parser.add_argument("--accent", action="store_true")
 
     args = parser.parse_args()
 
     in_table = en_phones if args.p2k else ascii_entries
     out_table = kanas
 
-    model = Model(p2k=args.p2k)
+    model = Model(p2k=args.p2k) if not args.accent else AccentPredictor()
     model.load_state_dict(torch.load(args.model))
     model.eval()
 
@@ -36,10 +38,13 @@ if __name__ == "__main__":
 
     metadata = {}
 
-    metadata["in_table"] = "\0".join(in_table)
-    metadata["out_table"] = "\0".join(out_table)
-    metadata["sos_idx"] = str(SOS_IDX) # safetensors only accepts str in metadata
-    metadata["eos_idx"] = str(EOS_IDX)
+    if not args.accent:
+        metadata["in_table"] = "\0".join(in_table)
+        metadata["out_table"] = "\0".join(out_table)
+        metadata["sos_idx"] = str(SOS_IDX)  # safetensors only accepts str in metadata
+        metadata["eos_idx"] = str(EOS_IDX)
+    else:
+        metadata["in_table"] = "\0".join(kanas[3:])
 
     for name, param in model.named_parameters():
         if param.requires_grad:

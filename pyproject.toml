@@ -1,6 +1,6 @@
 [project]
 name = "e2k"
-version = "0.4.2"
+version = "0.5.0"
 description = "A tool for automatic English to Katakana conversion"
 readme = "README.md"
 authors = [{ name = "Patchethium", email = "asguftuikh@gmail.com" }]
@@ -16,6 +16,7 @@ build-backend = "setuptools.build_meta"
 dev = [
   "black>=25.1.0",
   "build>=1.2.2.post1",
+  "einops>=0.8.1",
   "g2p-en>=2.1.0",
   "safetensors>=0.5.2",
   "tensorboard>=2.18.0",
