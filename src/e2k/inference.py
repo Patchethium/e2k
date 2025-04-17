@@ -353,6 +353,7 @@ class AccentPredictor:
         """
         x: [T]
         """
+        x = list(filter(lambda x: x in self.in_table, x))
         x = [self.in_table[c] for c in x]
         x = np.array(x)
         x = self.emb.forward(x)  # [T,N]

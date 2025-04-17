@@ -84,6 +84,9 @@ print(f"Katakana: {katakana}, Accent: {accent}")
 in_table = ap.in_table # it's katakana without special tokens
 ```
 
+> [!WARNING]
+> For any symbols not in the `in_table`, the model will ignore them and may produce unexpected results.
+
 ## Performance
 
 ### Katakana Prediction
