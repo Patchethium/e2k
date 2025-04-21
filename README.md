@@ -245,7 +245,7 @@ python export.py --model /path/to/your/model.pth --p2k --output /path/to/your/mo
 
 ## License
 
- - The code is released under WTFPL, you can do WTF you want with it.
+ - The code is released Unlicenced (Public Domain).
  - The dictionary follows the [Wikimedia's license](https://dumps.wikimedia.org/legal.html) and the [JMdict / EDICT's Copyright](https://www.edrdg.org/) license.
    - In short, they both fall into CC-BY-SA.
    - The model weights are trained using the dictionary. I am not a lawyer, whether the machine learning weights is considered as a derivative work is up to you.
