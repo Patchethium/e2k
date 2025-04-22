@@ -359,7 +359,7 @@ class AccentPredictor:
         x = self.emb.forward(x)  # [T,N]
         _, hf = self.rnn.forward(x, None)  # [N]
         _, hr = self.rnn_rev.forward(x, None)  # [N]
-        h = np.concat([hf, hr], axis=0)
+        h = np.concatenate([hf, hr], axis=0)
         h = self.head.forward(h)
         h = h[0] * x.shape[0]
         h = int(h + 0.5)  # round operation
