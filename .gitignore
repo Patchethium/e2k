@@ -179,6 +179,7 @@ vendor/*
 *.pth
 *.npy
 *.npz
+*.zip
 # tensorboard logs
 runs/
 # really, who make this into the git?

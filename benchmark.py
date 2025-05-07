@@ -5,6 +5,7 @@ from train import MyDataset
 from extract import Welford
 from tqdm.auto import tqdm
 
+
 def main():
     p2k = P2K()
     c2k = C2K()
@@ -30,8 +31,9 @@ def main():
         c2k(words[i])
         end = time.time()
         c2k_t.update(end - start)
-    print(f"P2K: mean {p2k_t.mean()*1000} ms, std {p2k_t.std()*1000} ms")
-    print(f"C2K: mean {c2k_t.mean()*1000} ms, std {c2k_t.std()*1000} ms")
+    print(f"P2K: mean {p2k_t.mean() * 1000} ms, std {p2k_t.std() * 1000} ms")
+    print(f"C2K: mean {c2k_t.mean() * 1000} ms, std {c2k_t.std() * 1000} ms")
+
 
 if __name__ == "__main__":
     main()

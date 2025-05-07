@@ -18,9 +18,9 @@ SEED = 3407
 class AccentPredictor(nn.Module):
     def __init__(self):
         super().__init__()
-        self.emb = nn.Embedding(len(kanas[3:]), DIM) # we don't need the special tokens
+        self.emb = nn.Embedding(len(kanas[3:]), DIM)  # we don't need the special tokens
         self.rnn = nn.GRU(DIM, DIM, 1, batch_first=True, bidirectional=True)
-        self.head = nn.Linear(2*DIM, 1)
+        self.head = nn.Linear(2 * DIM, 1)
 
     def forward(self, x: Tensor) -> Tensor:
         x = self.emb(x)

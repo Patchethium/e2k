@@ -1,9 +1,12 @@
 # Description: Inference functions for the E2K model in numpy
+import zipfile
 import numpy as np
-from typing import Callable, Literal, Optional, Dict, Tuple
+from typing import Callable, List, Literal, Optional, Dict, Tuple, Union
 import importlib.resources
 from functools import partial
 import math
+import statistics as st
+import json
 
 
 class Linear:
@@ -267,7 +270,7 @@ class S2S:
 
 class BaseE2K:
     def __init__(self, name: str, max_len: int = 16):
-        data = np.load(get_weight_path(name), allow_pickle=True)
+        data = np.load(get_asset_path(name), allow_pickle=True)
         self.s2s = S2S(data, max_len)
         self.in_table = {c: i for i, c in enumerate(self.s2s.in_table)}
         self.out_table = self.s2s.out_table
@@ -277,13 +280,15 @@ class BaseE2K:
 
     def __call__(
         self,
-        src: str,
+        src: Union[str, List[str]],
         strategy: Optional[Literal["greedy", "top_k", "top_p"]] = None,
         *,
         k: Optional[int] = None,
         p: Optional[float] = None,
         t: Optional[float] = None,
     ) -> str:
+        if isinstance(src, str):
+            src = src.lower()
         src = list(filter(lambda x: x in self.in_table, src))
         src = [self.in_table[c] for c in src]
         src = [self.s2s.sos_idx] + src + [self.s2s.eos_idx]
@@ -309,7 +314,7 @@ class BaseE2K:
         return "".join(tgt)
 
 
-def get_weight_path(filename) -> str:
+def get_asset_path(filename) -> str:
     return importlib.resources.files("e2k.models").joinpath(filename)
 
 
@@ -326,7 +331,7 @@ class C2K(BaseE2K):
 class AccentPredictor:
     def __init__(self):
         name = "accent.npz"
-        weights = np.load(get_weight_path(name), allow_pickle=True)
+        weights = np.load(get_asset_path(name), allow_pickle=True)
         metadata = weights["metadata"].item()
         self.symbols = list(metadata["in_table"].split("\0"))
         self.in_table = {c: i for i, c in enumerate(self.symbols)}
@@ -366,7 +371,102 @@ class AccentPredictor:
         return h
 
     def __call__(self, x: str) -> int:
+        x = x.lower()
         return self.forward(x)
+
+
+class NGramModel:
+    def __init__(self, n, freq={}):
+        self.n = n
+        self.freq = freq  # {prefix: {appendix: frequency}}
+
+    def score(self, word):
+        """Score the log likelihood of a word or phrase being valid."""
+        # Handle multi-word phrases
+        words = word.split()
+        scores = []
+
+        for w in words:
+            w = w.lower()
+            w = f"^{w}$"  # Add start/end markers
+
+            ngrams = [w[i : i + self.n] for i in range(len(w) - self.n + 1)]
+
+            # Calculate score for each n-gram
+            word_scores = []
+            for ngram in ngrams:
+                prefix, appendix = ngram[:-1], ngram[-1]
+
+                if prefix not in self.freq or appendix not in self.freq[prefix]:
+                    return -float("inf")  # Unknown n-gram
+
+                word_scores.append(math.log(self.freq[prefix][appendix] + 1e-10))
+
+            if word_scores:
+                scores.append(st.mean(word_scores))
+
+        return st.mean(scores) if scores else -float("inf")
+
+
+class NGramCollection:
+    def __init__(self):
+        path = get_asset_path("ngram.json.zip")
+        with zipfile.ZipFile(path, "r", compression=zipfile.ZIP_LZMA) as z:
+            with z.open("ngram.json") as f:
+                data = json.loads(f.read())
+
+        self.weights = data["weights"]
+        self.threshold = data["threshold"]
+        self.valid_chars = set(data["valid_chars"] + [" "])
+
+        self.models = {NGramModel(int(k), v) for k, v in data["models"].items()}
+
+        self.spell_table = {
+            "a": "エー",
+            "b": "ビー",
+            "c": "シー",
+            "d": "ディー",
+            "e": "イー",
+            "f": "エフ",
+            "g": "ジー",
+            "h": "エイチ",
+            "i": "アイ",
+            "j": "ジェー",
+            "k": "ケー",
+            "l": "エル",
+            "m": "エム",
+            "n": "エヌ",
+            "o": "オー",
+            "p": "ピー",
+            "q": "キュー",
+            "r": "アール",
+            "s": "エス",
+            "t": "ティー",
+            "u": "ユー",
+            "v": "ヴィー",
+            "w": "ダブリュー",
+            "x": "エックス",
+            "y": "ワイ",
+            "z": "ゼット",
+        }
+
+    def score(self, word):
+        """Calculate weighted average score across all n-gram models."""
+        scores = [model.score(word) for model in self.models]
+
+        if self.weights:
+            return sum(w * s for w, s in zip(self.weights, scores))
+        else:
+            return st.mean(scores)
+    
+    def as_is(self, word: str) -> str:
+        cleaned = [c for c in word if c in self.spell_table]
+        return "".join(self.spell_table[c] for c in cleaned)
+
+    def __call__(self, word: str) -> bool:
+        word = word.lower()
+        cleaned = "".join(c for c in word if c in self.valid_chars)
+        return self.score(cleaned) > self.threshold
 
 
 if __name__ == "__main__":
@@ -376,11 +476,14 @@ if __name__ == "__main__":
     g2p = G2p()
     parser = argparse.ArgumentParser()
     args = parser.parse_args()
+    ngram = NGramCollection()
     p2k = P2K()
     c2k = C2K()
-    word = "geogaddi"
+    word = "aphex twin"
     phonemes = g2p(word)
     print(word)
+    print(f"Ngram result: {'Valid' if ngram(word) else 'Invalid'}")
+    print(f"As is: {ngram.as_is(word)}")
     print("P2K: ", p2k(phonemes))
     print("C2K: ", c2k(word))
     print("P2K (top_k): ", p2k(phonemes, "top_k", k=2))

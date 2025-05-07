@@ -30,7 +30,7 @@ g2p = G2p()
 
 word = "vordhosbn" # track 2 from Aphex Twin's "Drukqs"
 
-word = word.lower()
+word = word
 
 katakana = p2k(g2p(word))
 
@@ -56,10 +56,6 @@ in_table = p2k.in_table # `p2k` accepts phonemes from the CMUdict and space
 out_table = c2k.out_table
 out_table = p2k.out_table
 ```
-
-> [!WARNING]
-> For any symbols not in the `in_table`, the model will ignore them and may produce unexpected results.
-
 ### Pitch Accent Prediction
 
 We also provide an RNN model for pitch accent prediction. It's trained on about 700k entries from [Unidic](https://clrd.ninjal.ac.jp/unidic/). You can use it independently for any katakana sequences.
@@ -83,9 +79,46 @@ print(f"Katakana: {katakana}, Accent: {accent}")
 # you can also check its in-table
 in_table = ap.in_table # it's katakana without special tokens
 ```
+### N-Gram Model
+
+We also provide an N-Gram model to check if an English word suits for pronounciation (for example, not a short-hand word like `MVP` or `USSR`). In such case you may want to spell it as-is.
+
+```python
+from e2k import NGram
+
+ngram = NGram()
+
+def isvalid(word)
+  valid = ngram(word)
+  print(f"Word: {word}, {"Valid" if ngram(word) else "Invalid"}")
+
+isvalid("ussr") # invalid
+isvalid("doggy") # valid
+
+# we also provide an util function to spell as-is
+word = "ussr"
+print(ngram.as_is(word)) # ユーエスエスアール
+
+# A common practice is to spell the word when valid and spell as-is when invalid.
+# The example below will print 
+# `ユーエスエスアール` for `ussr` instead of `アサー`,
+# `ドギー` for `doggy` instead of `ディーオージージーワイ`
+if ngram(word):
+  print(ngram.as_is(word))
+else:
+  print(c2k(word))
+
+in_table = ngram.in_table # check the in_table
+
+# you can also check the raw score
+score = ngram.score(word) # negative value, higher the better
+```
 
 > [!WARNING]
 > For any symbols not in the `in_table`, the model will ignore them and may produce unexpected results.
+
+> [!NOTE]
+> The model will lower the input word automatically.
 
 ## Performance
 
@@ -105,6 +138,10 @@ We evaluate accuracy on 10% of the dataset.
 | Model   | Accuracy ↑ |
 | ------- | ---------- |
 | Default | 88.4%      |
+
+### N-Gram Model
+
+I don't know how to evaluate the n-gram model.
 
 ## Katakana Dictionary
 
@@ -182,6 +219,16 @@ To train the accent predictor, simply run
 python accent.py
 ```
 
+## N-Gram Model
+
+Download [cmudict](https://raw.githubusercontent.com/cmusphinx/cmudict/master/cmudict.dict), or `wget https://raw.githubusercontent.com/cmusphinx/cmudict/master/cmudict.dict`.
+
+### Training
+
+```bash
+python ngram.py
+```
+
 ## Development
 
 ### Install the dependencies
@@ -250,9 +297,11 @@ python export.py --model /path/to/your/model.pth --p2k --output /path/to/your/mo
    - In short, they both fall into CC-BY-SA.
    - The model weights are trained using the dictionary. I am not a lawyer, whether the machine learning weights is considered as a derivative work is up to you.
  - The accent predictor model is trained using Unidic, it can be used under the GPLv2.0/LGPLv2.1/Modified BSD at your choice. See [their page](https://clrd.ninjal.ac.jp/unidic/commerce_use.html) for further information.
+ - The n-gram model is trained using CMUDict with [BSD 2-Clause Licence](https://github.com/cmusphinx/cmudict/blob/master/LICENSE).
 
 ## Credits
 
 - [Wikitionary](https://www.wiktionary.org/)
 - [JMdict / EDICT](http://www.edrdg.org/jmdict/edict.html)
 - [Unidic](https://clrd.ninjal.ac.jp/unidic/)
+- [CMUDict](https://github.com/cmusphinx/cmudict)
