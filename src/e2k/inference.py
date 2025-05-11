@@ -383,29 +383,26 @@ class NGramModel:
     def score(self, word):
         """Score the log likelihood of a word or phrase being valid."""
         # Handle multi-word phrases
-        words = word.split()
+        word = word.lower()
+        word = f"^{word}$"
+        if len(word) < self.n:
+            word = "^"*(self.n - len(word)) + word
+        ngrams = [word[i : i + self.n] for i in range(len(word) - self.n + 1)]
+
+        # Calculate score for each n-gram
         scores = []
+        for ngram in ngrams:
+            prefix, appendix = ngram[:-1], ngram[-1]
 
-        for w in words:
-            w = w.lower()
-            w = f"^{w}$"  # Add start/end markers
+            if prefix not in self.freq or appendix not in self.freq[prefix]:
+                print(f"Warning: gram `{prefix}-{appendix}` in word `{word}` is not found in {self.n}-gram model")
+                return -float("inf")  # Unknown n-gram
 
-            ngrams = [w[i : i + self.n] for i in range(len(w) - self.n + 1)]
-
-            # Calculate score for each n-gram
-            word_scores = []
-            for ngram in ngrams:
-                prefix, appendix = ngram[:-1], ngram[-1]
-
-                if prefix not in self.freq or appendix not in self.freq[prefix]:
-                    return -float("inf")  # Unknown n-gram
-
-                word_scores.append(math.log(self.freq[prefix][appendix] + 1e-10))
-
-            if word_scores:
-                scores.append(st.mean(word_scores))
-
-        return st.mean(scores) if scores else -float("inf")
+            scores.append(math.log(self.freq[prefix][appendix] + 1e-10))
+        if len(scores):
+            print(f"Warning: no grams extracted from {self.n}-gram model for word `{word}`")
+            return -float("inf")
+        return st.mean(scores)
 
 
 class NGramCollection:
@@ -479,7 +476,7 @@ if __name__ == "__main__":
     ngram = NGramCollection()
     p2k = P2K()
     c2k = C2K()
-    word = "aphex twin"
+    word = "geogaddi"
     phonemes = g2p(word)
     print(word)
     print(f"Ngram result: {'Valid' if ngram(word) else 'Invalid'}")

@@ -13,7 +13,7 @@ import zipfile
 
 VALID_CHARS = list(
     set(ascii_lowercase + "$^-'")
-)  # valid characters in the n-gram model
+)  # valid characters in the n-gram model, & for placeholder
 
 
 class NGramCollection:
@@ -41,7 +41,8 @@ class NGramCollection:
         else:
             mean = st.mean(scores)
             std = st.stdev(scores)
-            self.threshold = mean - 2.0 * std
+            self.threshold = mean - 3.0 * std
+            print(f"Threshold: {self.threshold}")
 
     def score(self, word: str) -> float:
         """
@@ -63,9 +64,6 @@ class NGramCollection:
         word = word.lower()
         score = self.score(word)
         valid = score > self.threshold
-        print(
-            f"{word}: {'Valid' if valid else 'Invalid'}, score: {round(score, 4)}, threshold: {round(self.threshold, 4)}"
-        )
         return valid
 
     def serialize(self) -> str:
@@ -99,6 +97,8 @@ class NGramModel:
     def _ngram(self, word: str) -> List[str]:
         word = word.lower()
         word = f"^{word}$"
+        if len(word) < self.n:
+            word = "^"*(self.n - len(word)) + word
         return [word[i : i + self.n] for i in range(len(word) - self.n + 1)]
 
     def _possible_ngrams(self):
@@ -146,7 +146,7 @@ class NGramModel:
             prefix = ngram[:-1]
             appendix = ngram[-1]
             if prefix not in self.freq or appendix not in self.freq[prefix]:
-                print(f"Not found: {prefix} {appendix} in {self.n}-gram model")
+                print(f"Warning: {prefix}-{appendix} not found in {self.n}-gram model")
                 return -float("inf")
             scores.append(
                 math.log(
@@ -154,6 +154,7 @@ class NGramModel:
                 )  # add a small value to avoid log(0)
             )
         if len(scores) == 0:
+            print(f"Warning: no grams extracted in {self.n}-gram model")
             return -float("inf")
         likelihood = st.mean(scores)
         return likelihood
@@ -188,38 +189,29 @@ def main():
     parser = argparse.ArgumentParser(description="Train or load the n-gram model.")
     parser.add_argument("--train", action="store_true", help="Train the model")
     args = parser.parse_args()
-    ngram = NGramCollection([2, 3], [0.6, 0.4])
-    path = "vendor/ngram.json.zip"
-    if os.path.exists(path) and not args.train:
-        with zipfile.ZipFile(path, "r", compression=zipfile.ZIP_LZMA) as z:
+    ngram = NGramCollection([2, 3, 4], [0.5, 0.3, 0.2])
+    ckpt = "vendor/ngram.json.zip"
+    cmudict = "vendor/cmudict.dict"
+    if os.path.exists(ckpt) and not args.train:
+        from tqdm.auto import tqdm
+        words = load_cmudict(cmudict)
+        with zipfile.ZipFile(ckpt, "r", compression=zipfile.ZIP_LZMA) as z:
             with z.open("ngram.json") as f:
                 ser = f.read()
         ngram.deserialize(ser.decode("utf-8"))
+        false_negative = 0
+        for word in tqdm(words):
+            if not ngram.isvalid(word):
+                false_negative += 1
+        print(f"FNR: {round(false_negative / len(words), 4) * 100}%")
     else:
-        words = load_cmudict("vendor/cmudict.dict")
+        words = load_cmudict(cmudict)
         ngram.train(words)
         ser = ngram.serialize()
-        with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_LZMA) as z:
+        with zipfile.ZipFile(ckpt, "w", compression=zipfile.ZIP_LZMA) as z:
             with z.open("ngram.json", "w") as f:
                 f.write(ser.encode("utf-8"))
         print("Training finished.")
-    ngram.isvalid("hello")
-    ngram.isvalid("helloo")
-    ngram.isvalid("helxo")
-    ngram.isvalid("tar")
-    ngram.isvalid("tarball")
-    ngram.isvalid("dog")
-    ngram.isvalid("doggy")
-    ngram.isvalid("confield")
-    ngram.isvalid("Tri Repetae")
-    ngram.isvalid("autechre")
-    ngram.isvalid("vordhosbn")
-    ngram.isvalid("aphex twin")
-    ngram.isvalid("tgc")
-    ngram.isvalid("gcc")
-    ngram.isvalid("mvp")
-    ngram.isvalid("ussr")
-    ngram.isvalid("rogbiv")
 
 
 if __name__ == "__main__":
