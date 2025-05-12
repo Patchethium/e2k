@@ -1,6 +1,6 @@
 [project]
 name = "e2k"
-version = "0.6.1"
+version = "0.6.2"
 description = "A tool for automatic English to Katakana conversion"
 readme = "README.md"
 authors = [{ name = "Patchethium", email = "asguftuikh@gmail.com" }]
@@ -23,6 +23,8 @@ dev = [
   "torch>=2.5.0",
   "torcheval>=0.0.7",
   "tqdm>=4.67.1",
+  "matplotlib>=3.10.3",
+  "ipykernel>=6.29.5",
 ]
 
 [project.optional-dependencies]

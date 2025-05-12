@@ -399,7 +399,7 @@ class NGramModel:
                 return -float("inf")  # Unknown n-gram
 
             scores.append(math.log(self.freq[prefix][appendix] + 1e-10))
-        if len(scores):
+        if len(scores) == 0:
             print(f"Warning: no grams extracted from {self.n}-gram model for word `{word}`")
             return -float("inf")
         return st.mean(scores)
