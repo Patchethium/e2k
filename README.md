@@ -104,9 +104,9 @@ print(ngram.as_is(word)) # ユーエスエスアール
 # `ユーエスエスアール` for `ussr` instead of `アサー`,
 # `ドギー` for `doggy` instead of `ディーオージージーワイ`
 if ngram(word):
-  print(ngram.as_is(word))
-else:
   print(c2k(word))
+else:
+  print(ngram.as_is(word))
 
 in_table = ngram.in_table # check the in_table
 
