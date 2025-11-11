@@ -488,8 +488,8 @@ if __name__ == "__main__":
     print("P2K (top_p): ", p2k(phonemes, "top_p", p=0.7, t=2))
     print("C2K (top_p): ", c2k(word, "top_p", p=0.7, t=2))
 
-    katakana = c2k(word)
     ap = AccentPredictor()
-    print(f"C2K Katakana: {katakana}, Accent: {ap(katakana)}")
     katakana = p2k(phonemes)
     print(f"P2K Katakana: {katakana}, Accent: {ap(katakana)}")
+    katakana = c2k(word)
+    print(f"C2K Katakana: {katakana}, Accent: {ap(katakana)}")
