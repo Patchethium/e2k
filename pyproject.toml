@@ -5,7 +5,11 @@ description = "A tool for automatic English to Katakana conversion"
 readme = "README.md"
 authors = [{ name = "Patchethium", email = "asguftuikh@gmail.com" }]
 requires-python = ">=3.10"
-dependencies = ["numpy>=1.0,<3.0"]
+dependencies = [
+    "lightning>=2.5.6",
+    "numpy>=1.0,<3.0",
+    "omegaconf>=2.3.0",
+]
 license-files = ["LICENSE"]
 
 [build-system]

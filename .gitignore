@@ -176,6 +176,7 @@ cython_debug/
 # binary files and datasets
 vendor/*
 !vendor/.gitkeep
+output/
 *.pth
 *.npy
 *.npz

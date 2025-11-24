@@ -1,0 +1,22 @@
+tmp_dir: "vendor"
+output_dir: "output"
+seed: 1969
+
+dataset:
+  name: "katakana_dict.jsonl"
+  seed: 3407
+  num_workers: 4
+
+model:
+  dim: 128
+  n_heads: 2
+  n_enc_layers: 2
+  n_dec_layers: 2
+  max_len: 64
+
+train:
+  batch_size: 64
+  epochs: 30
+  lr: 1.0e-4
+  mask_ratio: 0.3
+  gamma: 0.95
