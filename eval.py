@@ -1,46 +1,50 @@
 # Description: Evaluate the model on the full dataset.
 # and calculate the accuracy.
+import os
 import torch
 import argparse
 from torcheval.metrics import BLEUScore
 from tqdm.auto import tqdm
-from train import Model, MyDataset, random_split
+from train import E2KDataset, E2KLightningModule
+from omegaconf import OmegaConf
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument("--data", type=str, default="data.jsonl")
+parser.add_argument("-c", "--config", type=str, required=True)
 parser.add_argument("--model", type=str, required=True)
-parser.add_argument("--p2k", action="store_true")
 
 args = parser.parse_args()
+c = OmegaConf.load(args.config)
 
+test_path = os.path.join(c.tmp_dir, "test_dataset.jsonl")
+train_path = os.path.join(c.tmp_dir, "train_dataset.jsonl")
+
+if not all([os.path.exists(path) for path in [test_path, train_path]]):
+    raise FileNotFoundError(f"Test dataset not found at {test_path}")
+
+
+test_ds = E2KDataset(test_path, eval=True)
+train_ds = E2KDataset(train_path, eval=True)
+test_ds.update_symbols(train_ds.input_symbols, train_ds.output_symbols)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-model = Model(p2k=args.p2k).to(device)
-
-model.load_state_dict(torch.load(args.model))
-
+module = E2KLightningModule.load_from_checkpoint(
+    args.model, in_symbols=test_ds.input_symbols, out_symbols=test_ds.output_symbols, cfg=c
+)
+model = module.model.to(device)
 model.eval()
+bleu = BLEUScore(n_gram=2)
 
-torch.manual_seed(3407)
+with torch.no_grad():
+    for src, tgt in tqdm(test_ds, desc="Evaluating"):
+        tgt = [" ".join(list(t)) for t in tgt] # add spaces between characters for BLEU calculation
+        src_idx = torch.tensor(
+                [test_ds.input_symbol_to_idx[ch] for ch in src], dtype=torch.long
+            )
+        src = src_idx.unsqueeze(0).to(device)
 
-dataset = MyDataset(args.data, device, p2k=args.p2k)
-test_ds, _ = random_split(dataset, [0.1, 0.9])
-dataset.set_return_full(True)  # bleu score test
+        output, _ = model.generate(src, None)
+        output = " ".join([test_ds.output_symbols[idx] for idx in output.tolist()])
+        bleu.update(output, [tgt])
 
-bleu = BLEUScore(n_gram=3)
-
-
-def tensor2str(t):
-    return " ".join([str(int(x)) for x in t])
-
-
-for i in tqdm(range(len(test_ds))):
-    eng, kata = test_ds[i]
-    res = model.inference(eng)
-    pred_kana = tensor2str(res)
-    kana = [[tensor2str(k) for k in kata]]
-    bleu.update(pred_kana, kana)
-
-
-print(f"BLEU score: {bleu.compute()}")
+print(f"BLEU Score: {bleu.compute().item()*100:.2f}")

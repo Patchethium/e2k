@@ -1,3 +1,4 @@
+from typing import Optional
 import torch
 from torch import nn, Tensor
 from torch.utils.data import DataLoader, Dataset, random_split
@@ -23,8 +24,9 @@ import random
 
 
 class E2KDataset(Dataset):
-    def __init__(self, path: str):
-        self.data = []  # [word1: kata1, word1: kata2, word2: kata1, ...]
+    def __init__(self, path: str, eval: bool = False):
+        self.flat_data = []  # [word1: kata1, word1: kata2, word2: kata1, ...]
+        self.data = {}  # {word1: [kata1, kata2], word2: [kata1], ...}
         if not os.path.exists(path):
             raise FileNotFoundError(f"Dataset file not found: {path}")
         self.input_symbols = set()
@@ -33,42 +35,47 @@ class E2KDataset(Dataset):
             for line in f:
                 item = json.loads(line.strip())
                 word = item["word"]
-                for kata in item["kata"]:
-                    self.data.append((word, kata))
+                kata_list = item["kata"]
+                self.data[word] = kata_list
+                for kata in kata_list:
+                    self.flat_data.append((word, kata))
                     for ch in word:
                         self.input_symbols.add(ch)
                     for ch in kata:
                         self.output_symbols.add(ch)
-        self.input_symbols = ["<pad>"] + sorted(list(self.input_symbols))
-        self.output_symbols = ["<pad>"] + sorted(list(self.output_symbols))
+        self.flat_data = list(self.flat_data)
+        self.data = list(self.data.items())
+        self.update_symbols(
+            ["<pad>"] + sorted(self.input_symbols), ["<pad>"] + sorted(self.output_symbols)
+        )
+        self.eval = eval
+
+    def update_symbols(self, new_isyms, new_osyms):
+        self.input_symbols = new_isyms
+        self.output_symbols = new_osyms
         self.input_symbol_to_idx = {s: i for i, s in enumerate(self.input_symbols)}
         self.output_symbol_to_idx = {s: i for i, s in enumerate(self.output_symbols)}
 
     def __len__(self):
-        return len(self.data)
+        if self.eval:
+            return len(self.data)
+        else:
+            return len(self.flat_data)
 
     def __getitem__(self, idx):
-        # convert the strings to Tensors of indices
-        word, kata = self.data[idx]
-        word_indices = torch.tensor(
-            [self.input_symbol_to_idx[ch] for ch in word], dtype=torch.long
-        )
-        kata_indices = torch.tensor(
-            [self.output_symbol_to_idx[ch] for ch in kata], dtype=torch.long
-        )
-        return word_indices, kata_indices
-
-    def dump_s(self) -> str:
-        dumped = {}
-        for word, kata in self.data:
-            if word not in dumped:
-                dumped[word] = []
-            dumped[word].append(kata)
-        lines = []
-        for word, kata_list in dumped.items():
-            item = {"word": word, "kata": kata_list}
-            lines.append(json.dumps(item, ensure_ascii=False))
-        return "\n".join(lines)
+        if self.eval:
+            # returns the multi data as plain strings
+            return self.data[idx]
+        else:
+            # convert the strings to Tensors of indices
+            word, kata = self.flat_data[idx]
+            word_indices = torch.tensor(
+                [self.input_symbol_to_idx[ch] for ch in word], dtype=torch.long
+            )
+            kata_indices = torch.tensor(
+                [self.output_symbol_to_idx[ch] for ch in kata], dtype=torch.long
+            )
+            return word_indices, kata_indices
 
 
 def lens2mask(lengths):
@@ -203,7 +210,9 @@ class E2KModel(nn.Module):
         output_logits = self.out(decoder_output)  # (B, T_tgt, tgt_vocab_size)
         return length_logits, output_logits, rand_mask
 
-    def generate(self, src: Tensor, src_mask: Tensor):
+    def generate(
+        self, src: Tensor, src_mask: Optional[Tensor] = None
+    ) -> tuple[Tensor, int]:
         """
         1. encode the source sequence with an appended [CLS] token
         2. get the length from the [CLS] token output
@@ -365,30 +374,42 @@ if __name__ == "__main__":
     if not all([os.path.exists(os.path.join(cfg.tmp_dir, f)) for f in splits]):
         print("Splits not found, preparing datasets...")
         # save a split of the dataset for validation
-        dataset = E2KDataset(os.path.join(cfg.tmp_dir, cfg.dataset.name))
+        dataset = E2KDataset(os.path.join(cfg.tmp_dir, cfg.dataset.name), eval=True)
         train, val, test = random_split(
             dataset,
-            [0.8, 0.1, 0.1],
+            [0.9, 0.05, 0.05],
             generator=torch.Generator().manual_seed(cfg.dataset.seed),
         )
+        print(f"Train size: {len(train)}, Val size: {len(val)}, Test size: {len(test)}")
         for split, name in zip([train, val, test], splits):
             with open(os.path.join(cfg.tmp_dir, f"{name}"), "w", encoding="utf-8") as f:
-                f.write(E2KDataset.dump_s(split.dataset))
-        print("Datasets are prepared in", cfg.tmp_dir)
+                dumped = []
+                for src, tgt in split:
+                    item = {"word": src, "kata": tgt}
+                    dumped.append(json.dumps(item, ensure_ascii=False))
+                f.write("\n".join(dumped))
+        print("Datasets prepared and saved to", cfg.tmp_dir)
+    else:
+        print("Dataset splits found, skipping preparation.")
+    # load datasets
     train = E2KDataset(os.path.join(cfg.tmp_dir, "train_dataset.jsonl"))
     val = E2KDataset(os.path.join(cfg.tmp_dir, "val_dataset.jsonl"))
     test = E2KDataset(os.path.join(cfg.tmp_dir, "test_dataset.jsonl"))
+    # val and test could be too small to cover all symbols, so we update their symbol tables from train set
+    val.update_symbols(train.input_symbols, train.output_symbols)
+    test.update_symbols(train.input_symbols, train.output_symbols)
     # training loop starts here
-    in_symbols = train.input_symbols
-    out_symbols = train.output_symbols
     if args.resume is not None:
         print(f"Resuming from checkpoint: {args.resume}")
         lit_model = E2KLightningModule.load_from_checkpoint(
-            args.resume, in_symbols=in_symbols, out_symbols=out_symbols, cfg=cfg
+            args.resume,
+            in_symbols=train.input_symbols,
+            out_symbols=train.output_symbols,
+            cfg=cfg,
         )
     else:
         lit_model = E2KLightningModule(
-            in_symbols=in_symbols, out_symbols=out_symbols, cfg=cfg
+            in_symbols=train.input_symbols, out_symbols=train.output_symbols, cfg=cfg
         )
     trainer = L.Trainer(
         max_epochs=cfg.train.epochs,

@@ -8,15 +8,15 @@ dataset:
   num_workers: 4
 
 model:
-  dim: 128
+  dim: 256
   n_heads: 2
   n_enc_layers: 2
   n_dec_layers: 2
-  max_len: 64
+  max_len: 32
 
 train:
   batch_size: 64
-  epochs: 30
+  epochs: 50
   lr: 1.0e-4
   mask_ratio: 0.3
-  gamma: 0.95
+  gamma: 0.97
