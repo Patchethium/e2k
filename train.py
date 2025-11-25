@@ -24,7 +24,7 @@ import random
 
 
 class E2KDataset(Dataset):
-    def __init__(self, path: str, eval: bool = False):
+    def __init__(self, path: str, eval: bool = False, causal: bool = False):
         self.flat_data = []  # [word1: kata1, word1: kata2, word2: kata1, ...]
         self.data = {}  # {word1: [kata1, kata2], word2: [kata1], ...}
         if not os.path.exists(path):
@@ -45,10 +45,18 @@ class E2KDataset(Dataset):
                         self.output_symbols.add(ch)
         self.flat_data = list(self.flat_data)
         self.data = list(self.data.items())
-        self.update_symbols(
-            ["<pad>"] + sorted(self.input_symbols), ["<pad>"] + sorted(self.output_symbols)
-        )
+        if causal:
+            self.update_symbols(
+                ["<pad>", "<sos>", "<eos>"] + sorted(self.input_symbols),
+                ["<pad>", "<sos>", "<eos>"] + sorted(self.output_symbols),
+            )
+        else:
+            self.update_symbols(
+                ["<pad>"] + sorted(self.input_symbols),
+                ["<pad>"] + sorted(self.output_symbols),
+            )
         self.eval = eval
+        self.causal = causal
 
     def update_symbols(self, new_isyms, new_osyms):
         self.input_symbols = new_isyms
@@ -69,6 +77,9 @@ class E2KDataset(Dataset):
         else:
             # convert the strings to Tensors of indices
             word, kata = self.flat_data[idx]
+            if self.causal:
+                word = ["<sos>", *list(word), "<eos>"]
+                kata = ["<sos>", *list(kata), "<eos>"]
             word_indices = torch.tensor(
                 [self.input_symbol_to_idx[ch] for ch in word], dtype=torch.long
             )
@@ -132,7 +143,7 @@ class SinPE(nn.Module):
         return x
 
 
-class E2KModel(nn.Module):
+class MLME2KModel(nn.Module):
     def __init__(self, src_vocab_size: int, tgt_vocab_size: int, cfg):
         super().__init__()
         m_cfg = cfg.model
@@ -270,10 +281,96 @@ class E2KModel(nn.Module):
         return generated.squeeze(0), pred_length
 
 
-class E2KLightningModule(L.LightningModule):
+class CausalE2KModel(nn.Module):
+    """
+    A traditional seq2seq model with causal decoding for comparison.
+    """
+
+    def __init__(self, src_vocab_size: int, tgt_vocab_size: int, cfg):
+        super().__init__()
+        m_cfg = cfg.model
+        self.cfg = cfg
+        self.src_emb = nn.Embedding(src_vocab_size, m_cfg.dim)
+        self.tgt_emb = nn.Embedding(tgt_vocab_size, m_cfg.dim)
+        self.pe = SinPE(m_cfg.dim, max_len=m_cfg.max_len)
+        self.encoder = nn.TransformerEncoder(
+            nn.TransformerEncoderLayer(
+                d_model=m_cfg.dim, nhead=m_cfg.n_heads, batch_first=True
+            ),
+            num_layers=m_cfg.n_enc_layers,
+        )
+        self.decoder = nn.TransformerDecoder(
+            nn.TransformerDecoderLayer(
+                d_model=m_cfg.dim, nhead=m_cfg.n_heads, batch_first=True
+            ),
+            num_layers=m_cfg.n_dec_layers,
+        )
+        self.out = nn.Linear(m_cfg.dim, tgt_vocab_size)
+        self.sos_idx = 1
+        self.eos_idx = 2
+
+    def forward(
+        self, src: Tensor, tgt: Tensor, src_mask: Tensor = None, tgt_mask: Tensor = None
+    ):
+        tgt = tgt[:, :-1]  # remove the last token for teacher forcing
+        # fill back the padding positions
+        if tgt_mask is not None:
+            tgt_mask = tgt_mask[:, :-1]
+
+        src_emb = self.pe(self.src_emb(src))
+        memory = self.encoder(src_emb, src_key_padding_mask=src_mask)  # (B, T_src, D)
+        tgt_emb = self.pe(self.tgt_emb(tgt))
+
+        # Generate causal mask for the target sequence
+        tgt_seq_len = tgt.size(1)
+        causal_mask = nn.Transformer.generate_square_subsequent_mask(
+            tgt_seq_len, device=tgt.device
+        )
+        decoder_output = self.decoder(
+            tgt_emb,
+            memory,
+            tgt_mask=causal_mask,  # Pass the causal mask here
+            tgt_is_causal=True,
+            memory_is_causal=False,
+            tgt_key_padding_mask=tgt_mask,
+            memory_key_padding_mask=src_mask,
+        )
+        output_logits = self.out(decoder_output)  # (B, T_tgt, tgt_vocab_size)
+        return output_logits
+
+    def generate(self, src: Tensor, src_mask: Optional[Tensor] = None):
+        max_len = self.cfg.model.max_len
+        src_emb = self.pe(self.src_emb(src))
+        memory = self.encoder(src_emb, src_key_padding_mask=src_mask)
+        generated = [self.sos_idx]
+        for _ in range(max_len):
+            tgt_input = torch.tensor(
+                generated, dtype=torch.long, device=src.device
+            ).unsqueeze(0)  # (1, i+1)
+            tgt_emb = self.pe(self.tgt_emb(tgt_input))
+            decoder_output = self.decoder(
+                tgt_emb,
+                memory,
+                tgt_is_causal=True,
+                memory_is_causal=False,
+                tgt_key_padding_mask=None,
+                memory_key_padding_mask=src_mask,
+            )
+            output_logits = self.out(decoder_output)  # (1, i+1, tgt_vocab_size+2)
+            next_token_logits = output_logits[0, -1, :]  # (tgt_vocab_size+2)
+            next_token = torch.argmax(next_token_logits).item()
+            if next_token == self.eos_idx:
+                break
+            generated.append(next_token)
+        return torch.tensor(generated, dtype=torch.long, device=src.device)[1:], len(
+            generated
+        )
+
+
+class MLME2KLightningModule(L.LightningModule):
     def __init__(self, cfg, in_symbols, out_symbols):
         super().__init__()
-        self.model = E2KModel(
+        self.model = MLME2KModel(
             src_vocab_size=len(in_symbols),
             tgt_vocab_size=len(out_symbols),
             cfg=cfg,
@@ -347,6 +444,62 @@ class E2KLightningModule(L.LightningModule):
         return {"optimizer": optimizer, "lr_scheduler": scheduler}
 
 
+class CausalE2KLightningModule(L.LightningModule):
+    def __init__(self, cfg, in_symbols, out_symbols):
+        super().__init__()
+        self.model = CausalE2KModel(
+            src_vocab_size=len(in_symbols),
+            tgt_vocab_size=len(out_symbols),
+            cfg=cfg,
+        )
+        self.cfg = cfg
+        self.in_symbols = in_symbols
+        self.out_symbols = out_symbols
+
+    def training_step(self, batch, batch_idx):
+        src, tgt, src_mask, tgt_mask = batch  # src: (B, T_src), tgt: (B, T_tgt)
+        output_logits = self.model.forward(src, tgt, src_mask, tgt_mask)
+        # compute seq2seq loss
+        loss = F.cross_entropy(
+            output_logits.transpose(1, 2),  # (B, vocab_size, T_tgt-1)
+            tgt[:, 1:],  # remove the first token
+            ignore_index=0,
+        )
+        self.log("train/loss", loss)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        loss = self.training_step(batch, batch_idx)
+        if batch_idx == 0:
+            _batch_idx = random.randint(0, batch[0].size(0) - 1)
+            src, tgt, src_mask, tgt_mask = batch
+            generated, pred_length = self.model.generate(
+                src[_batch_idx].unsqueeze(0), src_mask[_batch_idx].unsqueeze(0)
+            )
+            print("Sample generation (Causal Model):")
+            print(
+                "Source:",
+                "".join([self.in_symbols[idx] for idx in src[_batch_idx].tolist()]),
+            )
+            print(tgt[_batch_idx].tolist())
+            print(
+                "Target:",
+                "".join([self.out_symbols[idx] for idx in tgt[_batch_idx].tolist()]),
+            )
+            print(generated.tolist())
+            print(
+                "Generated:",
+                "".join([self.out_symbols[idx] for idx in generated.tolist()]),
+            )
+        self.log("val/loss", loss)
+        return loss
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.cfg.train.lr)
+        scheduler = ExponentialLR(optimizer, gamma=self.cfg.train.gamma)
+        return {"optimizer": optimizer, "lr_scheduler": scheduler}
+
+
 def create_if_not_exists(dir_path):
     if not os.path.exists(dir_path):
         os.makedirs(dir_path, exist_ok=True)
@@ -392,25 +545,48 @@ if __name__ == "__main__":
     else:
         print("Dataset splits found, skipping preparation.")
     # load datasets
-    train = E2KDataset(os.path.join(cfg.tmp_dir, "train_dataset.jsonl"))
-    val = E2KDataset(os.path.join(cfg.tmp_dir, "val_dataset.jsonl"))
-    test = E2KDataset(os.path.join(cfg.tmp_dir, "test_dataset.jsonl"))
+    train = E2KDataset(
+        os.path.join(cfg.tmp_dir, "train_dataset.jsonl"), causal=cfg.model.causal
+    )
+    val = E2KDataset(
+        os.path.join(cfg.tmp_dir, "val_dataset.jsonl"), causal=cfg.model.causal
+    )
+    test = E2KDataset(
+        os.path.join(cfg.tmp_dir, "test_dataset.jsonl"), causal=cfg.model.causal
+    )
     # val and test could be too small to cover all symbols, so we update their symbol tables from train set
     val.update_symbols(train.input_symbols, train.output_symbols)
     test.update_symbols(train.input_symbols, train.output_symbols)
     # training loop starts here
     if args.resume is not None:
         print(f"Resuming from checkpoint: {args.resume}")
-        lit_model = E2KLightningModule.load_from_checkpoint(
-            args.resume,
-            in_symbols=train.input_symbols,
-            out_symbols=train.output_symbols,
-            cfg=cfg,
-        )
+        if cfg.model.causal:
+            lit_model = CausalE2KLightningModule.load_from_checkpoint(
+                args.resume,
+                in_symbols=train.input_symbols,
+                out_symbols=train.output_symbols,
+                cfg=cfg,
+            )
+        else:
+            lit_model = MLME2KLightningModule.load_from_checkpoint(
+                args.resume,
+                in_symbols=train.input_symbols,
+                out_symbols=train.output_symbols,
+                cfg=cfg,
+            )
     else:
-        lit_model = E2KLightningModule(
-            in_symbols=train.input_symbols, out_symbols=train.output_symbols, cfg=cfg
-        )
+        if cfg.model.causal:
+            lit_model = CausalE2KLightningModule(
+                in_symbols=train.input_symbols,
+                out_symbols=train.output_symbols,
+                cfg=cfg,
+            )
+        else:
+            lit_model = MLME2KLightningModule(
+                in_symbols=train.input_symbols,
+                out_symbols=train.output_symbols,
+                cfg=cfg,
+            )
     trainer = L.Trainer(
         max_epochs=cfg.train.epochs,
         accelerator="cpu",

@@ -13,6 +13,7 @@ model:
   n_enc_layers: 2
   n_dec_layers: 2
   max_len: 32
+  causal: true
 
 train:
   batch_size: 64
