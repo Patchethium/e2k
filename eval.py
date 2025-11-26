@@ -53,7 +53,7 @@ with torch.no_grad():
         src = src_idx.unsqueeze(0).to(device)
 
         output, _ = model.generate(src, None)
-        output = " ".join([test_ds.output_symbols[idx] for idx in output.tolist()])
+        output = " ".join([test_ds.output_symbols[idx] for idx in output])
         bleu.update(output, [tgt])
 
 print(f"BLEU Score: {bleu.compute().item()*100:.2f}")

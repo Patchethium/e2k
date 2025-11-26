@@ -14,10 +14,11 @@ model:
   n_dec_layers: 2
   max_len: 32
   causal: true
+  backbone: "rnn"
 
 train:
   batch_size: 64
   epochs: 50
-  lr: 1.0e-4
+  lr: 1.0e-3
   mask_ratio: 0.3
-  gamma: 0.97
+  gamma: 0.95

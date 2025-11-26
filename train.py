@@ -362,9 +362,73 @@ class CausalE2KModel(nn.Module):
             if next_token == self.eos_idx:
                 break
             generated.append(next_token)
-        return torch.tensor(generated, dtype=torch.long, device=src.device)[1:], len(
-            generated
+        generated = generated[1:]  # remove sos
+        return generated, len(generated)
+
+
+class RNNE2KModel(nn.Module):
+    def __init__(self, in_symbols, out_symbols, cfg):
+        super(RNNE2KModel, self).__init__()
+        self.e_emb = nn.Embedding(len(in_symbols), cfg.model.dim)
+        self.k_emb = nn.Embedding(len(out_symbols), cfg.model.dim)
+        self.encoder = nn.GRU(cfg.model.dim, cfg.model.dim, batch_first=True, bidirectional=True)
+        self.encoder_fc = nn.Sequential(
+            nn.Linear(2 * cfg.model.dim, cfg.model.dim),
+            nn.Tanh(),
         )
+        self.pre_decoder = nn.GRU(cfg.model.dim, cfg.model.dim, batch_first=True)
+        self.post_decoder = nn.GRU(2 * cfg.model.dim, cfg.model.dim, batch_first=True)
+        self.attn = nn.MultiheadAttention(cfg.model.dim, 4, batch_first=True, dropout=0.1)
+        self.fc = nn.Linear(cfg.model.dim, len(out_symbols))
+        self.sos_idx = 1
+        self.eos_idx = 2
+        self.cfg = cfg
+
+    def forward(self, src, tgt, src_mask=None, tgt_mask=None):
+        """
+        src: [B, Ts]
+        tgt: [B, Tt]
+        src_mask: [B, Ts]
+        tgt_mask: [B, Tt]
+        """
+        e_emb = self.e_emb(src)
+        k_emb = self.k_emb(tgt)
+        k_emb = k_emb[:, :-1]
+        enc_out, _ = self.encoder(e_emb)
+        enc_out = self.encoder_fc(enc_out)
+        dec_out, _ = self.pre_decoder(k_emb)
+        attn_out, _ = self.attn.forward(
+            dec_out, enc_out, enc_out, key_padding_mask=src_mask
+        )
+        x = torch.cat([dec_out, attn_out], dim=-1)
+        x, _ = self.post_decoder(x)
+        x = self.fc(x)
+        return x
+
+    def generate(self, src, src_mask=None):
+        # Assume both src and tgt are unbatched
+        src_emb = self.e_emb(src)
+        enc_out, _ = self.encoder(src_emb)
+        enc_out = self.encoder_fc(enc_out)
+        res = [self.sos_idx]
+        h1 = None
+        h2 = None
+        count = 0
+        while res[-1] != self.eos_idx and count < self.cfg.model.max_len:
+            dec = torch.tensor([res[-1]]).unsqueeze(0).to(src.device)
+            dec_emb = self.k_emb(dec)
+            dec_out, h1 = self.pre_decoder(dec_emb, h1)
+            attn_out, _ = self.attn(dec_out, enc_out, enc_out)
+            x = torch.cat([dec_out, attn_out], dim=-1)
+            x, h2 = self.post_decoder(x, h2)
+            x = self.fc(x)
+            idx = torch.argmax(x, dim=-1)
+            if idx.item() == self.eos_idx:
+                break
+            res.append(idx.cpu().item())
+            count += 1
+        res = res[1:]
+        return res, len(res)
 
 
 class MLME2KLightningModule(L.LightningModule):
@@ -447,11 +511,18 @@ class MLME2KLightningModule(L.LightningModule):
 class CausalE2KLightningModule(L.LightningModule):
     def __init__(self, cfg, in_symbols, out_symbols):
         super().__init__()
-        self.model = CausalE2KModel(
-            src_vocab_size=len(in_symbols),
-            tgt_vocab_size=len(out_symbols),
-            cfg=cfg,
-        )
+        if cfg.model.backbone == "rnn":
+            self.model = RNNE2KModel(
+                in_symbols=in_symbols,
+                out_symbols=out_symbols,
+                cfg=cfg,
+            )
+        elif cfg.model.backbone == "transformer":
+            self.model = CausalE2KModel(
+                src_vocab_size=len(in_symbols),
+                tgt_vocab_size=len(out_symbols),
+                cfg=cfg,
+            )
         self.cfg = cfg
         self.in_symbols = in_symbols
         self.out_symbols = out_symbols
@@ -486,10 +557,9 @@ class CausalE2KLightningModule(L.LightningModule):
                 "Target:",
                 "".join([self.out_symbols[idx] for idx in tgt[_batch_idx].tolist()]),
             )
-            print(generated.tolist())
             print(
                 "Generated:",
-                "".join([self.out_symbols[idx] for idx in generated.tolist()]),
+                "".join([self.out_symbols[idx] for idx in generated]),
             )
         self.log("val/loss", loss)
         return loss

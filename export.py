@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from safetensors.numpy import save_file
 import argparse
-from train import Model
+from train import RNNE2KModel
 from accent import AccentPredictor
 from hp import kanas, en_phones, ascii_entries, SOS_IDX, EOS_IDX, PAD_IDX
 
@@ -27,7 +27,7 @@ if __name__ == "__main__":
     in_table = en_phones if args.p2k else ascii_entries
     out_table = kanas
 
-    model = Model(p2k=args.p2k) if not args.accent else AccentPredictor()
+    model = RNNE2KModel(p2k=args.p2k) if not args.accent else AccentPredictor()
     model.load_state_dict(torch.load(args.model))
     model.eval()
 
