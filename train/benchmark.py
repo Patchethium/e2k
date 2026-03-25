@@ -1,8 +1,8 @@
 import time
 
 from e2k import P2K, C2K
-from train import MyDataset
-from extract import Welford
+from .train import MyDataset
+from .extract import Welford
 from tqdm.auto import tqdm
 
 

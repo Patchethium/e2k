@@ -6,9 +6,9 @@ import numpy as np
 import torch
 from safetensors.numpy import save_file
 import argparse
-from train import Model
-from accent import AccentPredictor
-from hp import kanas, en_phones, ascii_entries, SOS_IDX, EOS_IDX, PAD_IDX
+from .train import Model
+from .accent import AccentPredictor
+from .hp import kanas, en_phones, ascii_entries, SOS_IDX, EOS_IDX, PAD_IDX
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

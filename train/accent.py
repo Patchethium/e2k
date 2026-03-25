@@ -8,7 +8,7 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.optim.lr_scheduler import ExponentialLR
 from torcheval.metrics import MulticlassAccuracy
 
-from hp import kanas
+from .hp import kanas
 
 
 DIM = 256
