@@ -4,7 +4,7 @@ import torch
 import argparse
 from torcheval.metrics import BLEUScore
 from tqdm.auto import tqdm
-from .train import Model, MyDataset, random_split
+from e2k_train.train import Model, MyDataset, random_split
 
 parser = argparse.ArgumentParser()
 

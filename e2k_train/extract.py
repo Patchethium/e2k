@@ -12,7 +12,7 @@ import re
 from collections import defaultdict
 from typing import Dict, List
 import argparse
-from .hp import ascii_entries
+from e2k_train.hp import ascii_entries
 
 
 katakana_re = re.compile(r"[\u30A1-\u30F4\u30FC]+")
@@ -194,16 +194,7 @@ def filter_outliers(dict: Dict[str, List[str]]) -> Dict[str, List[str]]:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-p",
-        "--path",
-        help="Path to the Japanese Wiktionary dump.",
-        default="vendor/ja-extract.jsonl",
-        required=False,
-    )
-    args = parser.parse_args()
-    wiki_dict = extract_wiki(args.path)
+    wiki_dict = extract_wiki("vendor/ja-extract.jsonl")
     jmdict_dict = extract_jmdict("vendor/edict2")
     katakana_dict = post_processing(wiki_dict, jmdict_dict)
     # save as jsonl

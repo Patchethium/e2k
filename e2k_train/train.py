@@ -15,7 +15,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from g2p_en import G2p
 
-from .hp import kanas, en_phones, ascii_entries, PAD_IDX, SOS_IDX, EOS_IDX
+from e2k_train.hp import kanas, en_phones, ascii_entries, PAD_IDX, SOS_IDX, EOS_IDX
 
 
 SEED = 3407
@@ -202,7 +202,7 @@ def infer(src, model, p2k):
 def train():
     torch.manual_seed(SEED)
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data", type=str, default="data.jsonl")
+    parser.add_argument("--data", type=str, default="vendor/katakana_dict.jsonl")
     parser.add_argument("--p2k", action="store_true")
     args = parser.parse_args()
 

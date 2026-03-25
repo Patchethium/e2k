@@ -6,9 +6,9 @@ import numpy as np
 import torch
 from safetensors.numpy import save_file
 import argparse
-from .train import Model
-from .accent import AccentPredictor
-from .hp import kanas, en_phones, ascii_entries, SOS_IDX, EOS_IDX, PAD_IDX
+from e2k_train.train import Model
+from accent import AccentPredictor
+from e2k_train.hp import kanas, en_phones, ascii_entries, SOS_IDX, EOS_IDX
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -16,7 +16,7 @@ if __name__ == "__main__":
     parser.add_argument("--model", type=str, required=True)
     parser.add_argument("--p2k", action="store_true")
     parser.add_argument("--output", type=str, required=True)
-    parser.add_argument("--fp32", action="store_true")
+    parser.add_argument("--fp32", action="store_true")r
     parser.add_argument(
         "--safetensors", action="store_true", help="Use safe tensors instead of numpy"
     )

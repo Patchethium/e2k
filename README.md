@@ -108,98 +108,40 @@ accent.in_table # valid katakana symbols for accent prediction
 > [!NOTE]
 > I'm too dumb to figure out how to properly evaluate the n-gram model.
 
-## Data Preparation
+## Develop
 
-> These datasets are **not included** in the PyPI package.
-> Clone the repo to generate them yourself or download from the Releases.
+> [!NOTE]
+> This section is for development the e2k root package. For training, see [Training](#training)
 
-```bash
-git clone https://github.com/Patchethium/e2k.git
-```
-
-### 1. Katakana Dictionary
-
-Extracted from **Wiktionary** and **JMdict/EDICT**, resulting ~30k entries.
-
-#### Download Sources
-
-- [Wiktionary dump (ja-extract.jsonl.gz)](https://kaikki.org/dictionary/rawdata.html)
-- [JMdict / EDICT (edict2.gz)](https://www.edrdg.org/wiki/index.php/JMdict-EDICT_Dictionary_Project)
-
-#### Extraction
-
-```bash
-python extract.py --path /path/to/ja-extract.jsonl
-```
-
-Outputs `vendor/katakana_dict.jsonl`.
-
-### 2. Accent Dictionary
-
-Download [Unidic 2.1.2](https://clrd.ninjal.ac.jp/unidic/back_number.html), extract it and place `lex.csv` in `vendor/`.
-
-Train the accent predictor:
-
-```bash
-python accent.py
-```
-
-### 3. N-Gram Model
-
-Download [cmudict.dict](https://raw.githubusercontent.com/cmusphinx/cmudict/master/cmudict.dict) and place it in `vendor/`.
-
-Train the n-gram model:
-
-```bash
-python ngram.py
-```
-
-## Development
-
-### Setup
+### Dependencies
 
 We use [`uv`](https://docs.astral.sh/uv/) for dependency management:
 
-#### Install dependencies
+- Root package (`e2k` in `src/`) is the PyPI library and only depends on `numpy`.
+- Training code lives in the `e2k_train/` workspace member (`e2k_train`) and carries the heavy ML/tooling dependencies.
+
+For root package:
 
 ```bash
-# CPU-only for debugging and inference
-uv sync --extras cpu
-# CUDA 12.4 for training
-uv sync --extras cu124
+uv sync
 ```
 
-#### Activate virtual environment
+### Testing
+
+To make it run for debug, you need to download the following files from [Releases](https://github.com/Patchethium/e2k/releases) and put them into `src/models`.
+
+- `c2k` and `p2k` model files ([`model-c2k.npz`](https://github.com/Patchethium/e2k/releases/download/0.4.0/model-c2k.npz) and [`model-p2k.npz`](https://github.com/Patchethium/e2k/releases/download/0.4.0/model-p2k.npz))
+- ngrams model [`ngram.json.zip`](https://github.com/Patchethium/e2k/releases/download/0.6.1/ngram.json.zip)
+- accent model [`accent.npz`](https://github.com/Patchethium/e2k/releases/download/0.5.0/accent.npz)
 
 ```bash
-source .venv/bin/activate
+# test
+uv run src/inference.py
 ```
 
-If you don't feel like activating the virtual environment, replacing every `python` command below with `uv run` also works.
+## Training
 
-### Training
-
-```bash
-python train.py --data ./vendor/katakana_dict.jsonl
-```
-
-The checkpoint will be stored as `vendor/model-{p2k|c2k}-e{epoch}.pth`. It's recommended to use [`CUDA`](#Install-dependencies) for faster training.
-
-### Evaluation
-
-Run with `--help` for more details.
-
-```bash
-python eval.py --data ./vendor/katakana_dict.jsonl --model model.pth --p2k
-```
-
-### Export to NumPy
-
-Run with `--help` for more details.
-
-```bash
-python export.py --model model.pth --p2k --output model-p2k.npz
-```
+See [here](./e2k_train/README.md) for instructions related to data preparation, training, evaluation and exporting.
 
 ## License
 

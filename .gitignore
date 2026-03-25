@@ -174,8 +174,6 @@ cython_debug/
 .pypirc
 
 # binary files and datasets
-vendor/*
-!vendor/.gitkeep
 *.pth
 *.npy
 *.npz
