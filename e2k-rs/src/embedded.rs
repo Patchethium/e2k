@@ -1,10 +1,15 @@
-//! Models built into the binary from `models/` (the `embed` feature).
+//! Models built into the binary (the `embed` feature), taken from the Python
+//! package's `src/e2k/models` so both share one copy in git.
 
 use crate::{AccentPredictor, NGram, Result, C2K, P2K};
 
 macro_rules! model {
     ($file:literal) => {
-        include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/models/", $file))
+        include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../src/e2k/models/",
+            $file
+        ))
     };
 }
 

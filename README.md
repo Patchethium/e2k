@@ -4,6 +4,7 @@
 
 `e2k` is a Python library that translates English to Katakana using lightweight RNN models trained on data from Wiktionary and JMdict/EDICT.
 It only requires `numpy` as a runtime dependency.
+A Rust port with the same models and outputs lives in [`e2k-rs`](./e2k-rs/README.md).
 
 We also provide pretrained models and dictionaries in the **Releases** section (not included in the PyPI package).
 
@@ -128,11 +129,7 @@ uv sync
 
 ### Testing
 
-To make it run for debug, you need to download the following files from [Releases](https://github.com/Patchethium/e2k/releases) and put them into `src/models`.
-
-- `c2k` and `p2k` model files ([`model-c2k.npz`](https://github.com/Patchethium/e2k/releases/download/0.4.0/model-c2k.npz) and [`model-p2k.npz`](https://github.com/Patchethium/e2k/releases/download/0.4.0/model-p2k.npz))
-- ngrams model [`ngram.json.zip`](https://github.com/Patchethium/e2k/releases/download/0.6.1/ngram.json.zip)
-- accent model [`accent.npz`](https://github.com/Patchethium/e2k/releases/download/0.5.0/accent.npz)
+The model files are tracked in git under `src/e2k/models`, so a fresh clone runs as is.
 
 ```bash
 # test

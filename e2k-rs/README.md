@@ -4,20 +4,22 @@ Rust port of the [`e2k`](../README.md) English to Katakana library. It loads the
 
 ## Installation
 
-The crate isn't on crates.io, as the models exceed its size limit. Each [GitHub release](https://github.com/Patchethium/e2k/releases) has an `e2k-rs-<version>.zip` with the crate source and the models. Unpack it into your project, e.g. as `vendor/e2k-rs`, and add:
+The crate isn't on crates.io, as the models exceed its size limit. Depend on it from git, pinned to a release tag:
 
 ```toml
 [dependencies]
-e2k = { path = "vendor/e2k-rs", features = ["embed"] }
+e2k = { git = "https://github.com/Patchethium/e2k", tag = "v0.7.1", features = ["embed"] }
 ```
 
-The `embed` feature builds the models into your binary (about 11 MB) and enables the `embedded()` constructors. Without it, load the model files at runtime with `from_path`, or `from_bytes` (`from_zip_bytes` for `NGram`).
+The models are tracked in git under [`src/e2k/models`](../src/e2k/models), shared with the Python package. The `embed` feature builds them into your binary (about 11 MB) and enables the `embedded()` constructors. Without it, load model files at runtime with `from_path`, or `from_bytes` (`from_zip_bytes` for `NGram`).
 
-The model files are the same as the Python package's, also available on the Releases page:
+Cargo clones the whole repository history for git dependencies. To fetch only the tagged commit, enable shallow clones (nightly) in `.cargo/config.toml`:
 
-- [`model-c2k.npz`](https://github.com/Patchethium/e2k/releases/download/0.4.0/model-c2k.npz), [`model-p2k.npz`](https://github.com/Patchethium/e2k/releases/download/0.4.0/model-p2k.npz)
-- [`accent.npz`](https://github.com/Patchethium/e2k/releases/download/0.5.0/accent.npz)
-- [`ngram.json.zip`](https://github.com/Patchethium/e2k/releases/download/0.6.1/ngram.json.zip)
+```toml
+[unstable.git]
+shallow_index = true
+shallow_deps = true
+```
 
 ## Usage
 
@@ -74,12 +76,5 @@ cargo test
 cargo run --release --example demo -- ../src/e2k/models geogaddi ussr
 ```
 
-Tests read the models from `../src/e2k/models` and are skipped when they are missing.
+Tests read the models from `../src/e2k/models`.
 
-## Releasing
-
-```bash
-scripts/release.sh v0.7.0
-```
-
-This writes `target/release-archive/e2k-rs-<version>.zip` from the crate as committed at the given git ref, plus the models from `../src/e2k/models` (override with `E2K_MODEL_DIR`). Attach the zip to the GitHub release.
