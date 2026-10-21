@@ -53,7 +53,6 @@ fn ngram() {
     assert_eq!(ngram.as_is("ussr"), "ユーエスエスアール");
 }
 
-#[cfg(feature = "embed")]
 #[test]
 fn embedded() {
     assert_eq!(C2K::embedded().unwrap().infer("geogaddi"), "ジオガディ");

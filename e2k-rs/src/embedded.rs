@@ -1,5 +1,6 @@
-//! Models built into the binary (the `embed` feature), taken from the Python
-//! package's `src/e2k/models` so both share one copy in git.
+//! Models built into the binary, taken from the Python package's
+//! `src/e2k/models` so both share one copy in git. The linker drops them from
+//! binaries that never call `embedded()`.
 
 use crate::{AccentPredictor, NGram, Result, C2K, P2K};
 

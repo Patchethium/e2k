@@ -8,10 +8,10 @@ The crate isn't on crates.io, as the models exceed its size limit. Depend on it 
 
 ```toml
 [dependencies]
-e2k = { git = "https://github.com/Patchethium/e2k", tag = "v0.7.1", features = ["embed"] }
+e2k = { git = "https://github.com/Patchethium/e2k", tag = "v0.7.1" }
 ```
 
-The models are tracked in git under [`src/e2k/models`](../src/e2k/models), shared with the Python package. The `embed` feature builds them into your binary (about 11 MB) and enables the `embedded()` constructors. Without it, load model files at runtime with `from_path`, or `from_bytes` (`from_zip_bytes` for `NGram`).
+The models are tracked in git under [`src/e2k/models`](../src/e2k/models), shared with the Python package. The `embedded()` constructors build them into your binary (about 11 MB). To load other model files at runtime instead, use `from_path`, or `from_bytes` (`from_zip_bytes` for `NGram`); the linker then leaves the built-in models out.
 
 Cargo clones the whole repository history for git dependencies. To fetch only the tagged commit, enable shallow clones (nightly) in `.cargo/config.toml`:
 
@@ -26,7 +26,7 @@ shallow_deps = true
 ```rust
 use e2k::{AccentPredictor, NGram, Strategy, C2K, P2K};
 
-// With the `embed` feature
+// Models built into the binary
 let c2k = C2K::embedded()?;
 let p2k = P2K::embedded()?;
 let ap = AccentPredictor::embedded()?;
