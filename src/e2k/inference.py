@@ -116,7 +116,7 @@ class MHA:
         self.o_proj = Linear(out_proj_weight, out_proj_bias)
         self.num_heads = num_heads
         self.d_heads = self.dim // num_heads
-        self.scale = np.sqrt(self.dim)
+        self.scale = np.sqrt(self.d_heads)  # torch scales by sqrt(head_dim)
 
     def forward(self, q: np.ndarray, k: np.ndarray, v: np.ndarray) -> np.ndarray:
         """
@@ -165,12 +165,12 @@ def top_p(step_dec: np.ndarray, p: float, t: float):
     t: temperature
     """
     # softmax
-    step_dec = np.exp(step_dec) / t
+    step_dec = np.exp((step_dec - step_dec.max()) / t)
     step_dec = step_dec / step_dec.sum()
     sorted_idx = np.flip(np.argsort(step_dec, axis=-1), axis=-1)
     i = 0
     cumsum = 0
-    while cumsum < p:
+    while cumsum < p and i < len(sorted_idx):
         cumsum += step_dec[sorted_idx[i]]
         i += 1
     candidates = sorted_idx[:i]
@@ -309,7 +309,11 @@ class BaseE2K:
                 )
             case _:
                 raise ValueError(f"Unknown decoding strategy: {strategy=}")
-        tgt = [int(v) for v in tgt[1:-1]]
+        tgt = tgt[1:]
+        # strip <eos>, absent when decoding stopped at max_len
+        if tgt and tgt[-1] == self.s2s.eos_idx:
+            tgt = tgt[:-1]
+        tgt = [int(v) for v in tgt]
         tgt = [self.out_table[c] for c in tgt]
         return "".join(tgt)
 
@@ -350,7 +354,8 @@ class AccentPredictor:
                 weights["rnn.weight_hh_l0_reverse"],
                 weights["rnn.bias_ih_l0_reverse"],
                 weights["rnn.bias_hh_l0_reverse"],
-            )
+            ),
+            reverse=True,
         )
         self.head = Linear(weights["head.weight"], weights["head.bias"])
 
@@ -386,7 +391,7 @@ class NGramModel:
         word = word.lower()
         word = f"^{word}$"
         if len(word) < self.n:
-            word = "^"*(self.n - len(word)) + word
+            word = "^" * (self.n - len(word)) + word
         ngrams = [word[i : i + self.n] for i in range(len(word) - self.n + 1)]
 
         # Calculate score for each n-gram
@@ -395,12 +400,16 @@ class NGramModel:
             prefix, appendix = ngram[:-1], ngram[-1]
 
             if prefix not in self.freq or appendix not in self.freq[prefix]:
-                print(f"Warning: gram `{prefix}-{appendix}` in word `{word}` is not found in {self.n}-gram model")
+                print(
+                    f"Warning: gram `{prefix}-{appendix}` in word `{word}` is not found in {self.n}-gram model"
+                )
                 return -float("inf")  # Unknown n-gram
 
             scores.append(math.log(self.freq[prefix][appendix] + 1e-10))
         if len(scores) == 0:
-            print(f"Warning: no grams extracted from {self.n}-gram model for word `{word}`")
+            print(
+                f"Warning: no grams extracted from {self.n}-gram model for word `{word}`"
+            )
             return -float("inf")
         return st.mean(scores)
 
@@ -416,7 +425,8 @@ class NGramCollection:
         self.threshold = data["threshold"]
         self.valid_chars = set(data["valid_chars"] + [" "])
 
-        self.models = {NGramModel(int(k), v) for k, v in data["models"].items()}
+        # a list keeps the models in the same order as `weights`
+        self.models = [NGramModel(int(k), v) for k, v in data["models"].items()]
 
         self.spell_table = {
             "a": "エー",
@@ -455,7 +465,7 @@ class NGramCollection:
             return sum(w * s for w, s in zip(self.weights, scores))
         else:
             return st.mean(scores)
-    
+
     def as_is(self, word: str) -> str:
         cleaned = [c for c in word if c in self.spell_table]
         return "".join(self.spell_table[c] for c in cleaned)
@@ -476,7 +486,7 @@ if __name__ == "__main__":
     ngram = NGramCollection()
     p2k = P2K()
     c2k = C2K()
-    word = "geogaddi"
+    word = "vox"
     phonemes = g2p(word)
     print(word)
     print(f"Ngram result: {'Valid' if ngram(word) else 'Invalid'}")

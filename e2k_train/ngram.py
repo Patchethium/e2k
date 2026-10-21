@@ -85,7 +85,8 @@ class NGramCollection:
         self.threshold = ser["threshold"]
         valid_chars = ser["valid_chars"]
         models = ser["models"]
-        self.models = {NGramModel(int(k), v, valid_chars) for k, v in models.items()}
+        # a list keeps the models in the same order as `weights`
+        self.models = [NGramModel(int(k), v, valid_chars) for k, v in models.items()]
 
 
 class NGramModel:
