@@ -1,0 +1,18 @@
+[package]
+name = "e2k"
+version = "0.7.0"
+edition = "2021"
+description = "A tool for automatic English to Katakana conversion"
+readme = "README.md"
+authors = ["Patchethium <asguftuikh@gmail.com>"]
+license = "Unlicense"
+repository = "https://github.com/Patchethium/e2k"
+keywords = ["katakana", "japanese", "transliteration", "g2p"]
+
+[dependencies]
+half = "2"
+log = "0.4"
+ndarray = "0.17"
+rand = "0.9"
+serde_json = { version = "1", features = ["preserve_order"] }
+zip = { version = "9", default-features = false, features = ["deflate", "lzma"] }
