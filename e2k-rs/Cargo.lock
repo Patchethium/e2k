@@ -93,7 +93,7 @@ dependencies = [
 
 [[package]]
 name = "e2k"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "half",
  "log",
