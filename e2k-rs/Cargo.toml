@@ -9,6 +9,10 @@ license = "Unlicense"
 repository = "https://github.com/Patchethium/e2k"
 keywords = ["katakana", "japanese", "transliteration", "g2p"]
 
+[features]
+# Build the models in `models/` into the binary, see `C2K::embedded` etc.
+embed = []
+
 [dependencies]
 half = "2"
 log = "0.4"

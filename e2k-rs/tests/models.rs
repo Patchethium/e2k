@@ -71,3 +71,17 @@ fn ngram() {
     assert!(!ngram.is_valid("ussr"));
     assert_eq!(ngram.as_is("ussr"), "ユーエスエスアール");
 }
+
+#[cfg(feature = "embed")]
+#[test]
+fn embedded() {
+    assert_eq!(C2K::embedded().unwrap().infer("geogaddi"), "ジオガディ");
+    assert_eq!(
+        P2K::embedded()
+            .unwrap()
+            .infer(&["K", "AH0", "M", "P", "Y", "UW1", "T", "ER0"]),
+        "コンピューター"
+    );
+    assert_eq!(AccentPredictor::embedded().unwrap().predict("ヘパリン"), 1);
+    assert!(!NGram::embedded().unwrap().is_valid("ussr"));
+}

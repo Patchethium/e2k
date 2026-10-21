@@ -23,6 +23,8 @@
 //! ```
 
 mod accent;
+#[cfg(feature = "embed")]
+mod embedded;
 mod error;
 mod ngram;
 mod nn;
