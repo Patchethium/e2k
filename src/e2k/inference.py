@@ -341,14 +341,29 @@ def get_asset_path(filename) -> str:
     return importlib.resources.files("e2k.models").joinpath(filename)
 
 
+# "base": the full width model, "turbo": a width 128 model distilled from it,
+# about twice as fast with comparable accuracy
+ModelVariant = Literal["base", "turbo"]
+
+
+def model_file(task: str, model: ModelVariant) -> str:
+    match model:
+        case "base":
+            return f"model-{task}.npz"
+        case "turbo":
+            return f"model-{task}-turbo.npz"
+        case _:
+            raise ValueError(f"Unknown model: {model=}")
+
+
 class P2K(BaseE2K):
-    def __init__(self, max_len: int = 16):
-        super().__init__("model-p2k.npz", max_len)
+    def __init__(self, max_len: int = 16, model: ModelVariant = "base"):
+        super().__init__(model_file("p2k", model), max_len)
 
 
 class C2K(BaseE2K):
-    def __init__(self, max_len: int = 16):
-        super().__init__("model-c2k.npz", max_len)
+    def __init__(self, max_len: int = 16, model: ModelVariant = "base"):
+        super().__init__(model_file("c2k", model), max_len)
 
 
 class AccentPredictor:
