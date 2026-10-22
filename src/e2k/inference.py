@@ -45,10 +45,12 @@ class GRUCell:
         h: [D]
         """
         if h is None:
+            # match the weights' dtype, a float64 state would upcast every matmul
             h = np.zeros(
                 [
                     self.hh.weight.shape[-1],
-                ]
+                ],
+                dtype=self.hh.weight.dtype,
             )
         rzn_ih = self.ih.forward(x)
         rzn_hh = self.hh.forward(h)
@@ -116,24 +118,34 @@ class MHA:
         self.o_proj = Linear(out_proj_weight, out_proj_bias)
         self.num_heads = num_heads
         self.d_heads = self.dim // num_heads
-        self.scale = np.sqrt(self.d_heads)  # torch scales by sqrt(head_dim)
+        # torch scales by sqrt(head_dim), a python float keeps float32 inputs float32
+        self.scale = math.sqrt(self.d_heads)
 
-    def forward(self, q: np.ndarray, k: np.ndarray, v: np.ndarray) -> np.ndarray:
+    def split_heads(self, x: np.ndarray) -> np.ndarray:
+        """
+        x: [T, D] -> [H, T, D/H]
+        """
+        return np.stack(np.split(x, self.num_heads, axis=-1), axis=0)
+
+    def memory(self, kv: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Projects the keys and values once, so decoding steps can reuse them.
+        kv: [T, D] -> ([H, D/H, T], [H, T, D/H])
+        """
+        k = self.split_heads(self.k_proj.forward(kv))
+        v = self.split_heads(self.v_proj.forward(kv))
+        return np.transpose(k, (0, 2, 1)), v
+
+    def forward(
+        self, q: np.ndarray, memory: Tuple[np.ndarray, np.ndarray]
+    ) -> np.ndarray:
         """
         q: [T, D]
-        k: [T, D]
-        v: [T, D]
+        memory: from `memory()`
         """
-        q = self.q_proj.forward(q)
-        k = self.k_proj.forward(k)
-        v = self.v_proj.forward(v)
-        q = np.split(q, self.num_heads, axis=-1)
-        q = np.stack(q, axis=0)
-        k = np.split(k, self.num_heads, axis=-1)
-        k = np.stack(k, axis=0)
-        v = np.split(v, self.num_heads, axis=-1)
-        v = np.stack(v, axis=0)
-        attn = np.matmul(q, np.transpose(k, (0, 2, 1)))
+        k, v = memory
+        q = self.split_heads(self.q_proj.forward(q))
+        attn = np.matmul(q, k)
         attn = attn / self.scale
         attn = np.exp(attn)
         attn = attn / attn.sum(axis=-1, keepdims=True)
@@ -177,16 +189,22 @@ def top_p(step_dec: np.ndarray, p: float, t: float):
     return np.random.choice(candidates)
 
 
+def to_fp32(weights) -> Dict[str, np.ndarray]:
+    """
+    fp32 is usually faster than fp16 on CPU
+    """
+    new_weight = {}
+    for k, v in weights.items():
+        if v.dtype == np.float16:
+            new_weight[k] = v.astype(np.float32)
+        else:
+            new_weight[k] = v
+    return new_weight
+
+
 class S2S:
     def __init__(self, weights: Dict[str, np.ndarray], max_len: int = 16):
-        # fp32 is usually faster than fp16 on CPU
-        new_weight = {}
-        for k, v in weights.items():
-            if v.dtype == np.float16:
-                new_weight[k] = v.astype(np.float32)
-            else:
-                new_weight[k] = v
-        weights = new_weight
+        weights = to_fp32(weights)
         metadata = weights["metadata"].item()
         self.sos_idx = int(metadata["sos_idx"])
         self.eos_idx = int(metadata["eos_idx"])
@@ -251,13 +269,14 @@ class S2S:
         enc_out = np.concatenate([enc_out, enc_out_rev], axis=-1)
         enc_out = self.encoder_fc.forward(enc_out)
         enc_out = tanh(enc_out)
+        memory = self.attn.memory(enc_out)
         res = [self.sos_idx]
         h1 = None
         h2 = None
         for _ in range(self.max_len):
             dec_emb = self.k_emb.forward(np.array([res[-1]]))
             dec_out, h1 = self.pre_decoder.forward(dec_emb, h1)
-            attn_out = self.attn.forward(dec_out, enc_out, enc_out)
+            attn_out = self.attn.forward(dec_out, memory)
             x = np.concatenate([dec_out, attn_out], axis=-1)
             x, h2 = self.post_decoder.forward(x, h2)
             x = self.fc.forward(x)
@@ -335,7 +354,7 @@ class C2K(BaseE2K):
 class AccentPredictor:
     def __init__(self):
         name = "accent.npz"
-        weights = np.load(get_asset_path(name), allow_pickle=True)
+        weights = to_fp32(np.load(get_asset_path(name), allow_pickle=True))
         metadata = weights["metadata"].item()
         self.symbols = list(metadata["in_table"].split("\0"))
         self.in_table = {c: i for i, c in enumerate(self.symbols)}
