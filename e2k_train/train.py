@@ -23,22 +23,22 @@ DIM = 256
 
 
 class Model(nn.Module):
-    def __init__(self, p2k: bool = False):
+    def __init__(self, p2k: bool = False, dim: int = DIM):
         super(Model, self).__init__()
         if p2k:
-            self.e_emb = nn.Embedding(len(en_phones), DIM)
+            self.e_emb = nn.Embedding(len(en_phones), dim)
         else:
-            self.e_emb = nn.Embedding(len(ascii_entries), DIM)
-        self.k_emb = nn.Embedding(len(kanas), DIM)
-        self.encoder = nn.GRU(DIM, DIM, batch_first=True, bidirectional=True)
+            self.e_emb = nn.Embedding(len(ascii_entries), dim)
+        self.k_emb = nn.Embedding(len(kanas), dim)
+        self.encoder = nn.GRU(dim, dim, batch_first=True, bidirectional=True)
         self.encoder_fc = nn.Sequential(
-            nn.Linear(2 * DIM, DIM),
+            nn.Linear(2 * dim, dim),
             nn.Tanh(),
         )
-        self.pre_decoder = nn.GRU(DIM, DIM, batch_first=True)
-        self.post_decoder = nn.GRU(2 * DIM, DIM, batch_first=True)
-        self.attn = nn.MultiheadAttention(DIM, 4, batch_first=True, dropout=0.1)
-        self.fc = nn.Linear(DIM, len(kanas))
+        self.pre_decoder = nn.GRU(dim, dim, batch_first=True)
+        self.post_decoder = nn.GRU(2 * dim, dim, batch_first=True)
+        self.attn = nn.MultiheadAttention(dim, 4, batch_first=True, dropout=0.1)
+        self.fc = nn.Linear(dim, len(kanas))
 
     def forward(self, src, tgt, src_mask=None, tgt_mask=None):
         """
@@ -93,7 +93,8 @@ class MyDataset(Dataset):
         reads a json line file
         """
         super().__init__()
-        self.g2p = G2p()
+        # G2p loads nltk data, only P2K needs it
+        self.g2p = G2p() if p2k else None
         with open(path, "r") as file:
             lines = file.readlines()
         self.data = [json.loads(line) for line in lines]
