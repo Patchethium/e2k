@@ -8,7 +8,7 @@ import random
 import re
 from collections import defaultdict
 from string import ascii_lowercase
-from typing import Dict, List, Tuple
+from typing import Callable, Dict, List, Tuple
 
 import numpy as np
 
@@ -169,15 +169,59 @@ def auc(pos: np.ndarray, neg: np.ndarray) -> float:
     return (r - len(pos) * (len(pos) + 1) / 2) / (len(pos) * len(neg))
 
 
-def report(name: str, score, threshold: float, sets: Dict[str, List[str]]):
-    scores = {k: np.array([score(w) for w in v]) for k, v in sets.items()}
+Scorer = Callable[[List[str]], np.ndarray]
+
+
+def per_word(score: Callable[[str], float]) -> Scorer:
     # unseen grams score -inf in the shipped model, which breaks the ranks
-    scores = {k: np.nan_to_num(v, neginf=-1e9) for k, v in scores.items()}
+    return lambda words: np.nan_to_num([score(w) for w in words], neginf=-1e9)
+
+
+def make_splits(
+    cmudict: str, spelled_threshold: float, seed: int
+) -> Tuple[List[str], List[str], Dict[str, List[str]]]:
+    """
+    Returns the training words, the dev words for calibrating thresholds and
+    the evaluation sets: held-out test words, acronyms and random strings.
+    """
+    pronounced, spelled = split_cmudict(load_cmudict(cmudict), spelled_threshold)
+    rng = random.Random(seed)
+    rng.shuffle(pronounced)
+    n_held = len(pronounced) // 10
+    test, dev, train = (
+        pronounced[:n_held],
+        pronounced[n_held : 2 * n_held],
+        pronounced[2 * n_held :],
+    )
+    randoms = [
+        "".join(rng.choice(ascii_lowercase) for _ in range(len(w))) for w in test
+    ]
+    print(
+        f"train {len(train)}, dev {len(dev)}, test {len(test)}, "
+        f"spelled-out {len(spelled)}, random {len(randoms)}"
+    )
+    return train, dev, {"test": test, "spelled": spelled, "random": randoms}
+
+
+def calibrate(score: Scorer, dev: List[str], recall: float) -> float:
+    """The threshold that keeps `recall` of the dev words."""
+    return float(np.quantile(score(dev), 1 - recall))
+
+
+def print_header():
+    print(
+        f"{'model':<16} {'threshold':>9} {'recall':>8} {'rej.spell':>9} "
+        f"{'rej.rand':>9} {'AUC':>8}"
+    )
+
+
+def report(name: str, score: Scorer, threshold: float, sets: Dict[str, List[str]]):
+    scores = {k: score(v) for k, v in sets.items()}
     recall = (scores["test"] > threshold).mean()
     rej_spelled = (scores["spelled"] <= threshold).mean()
     rej_random = (scores["random"] <= threshold).mean()
     print(
-        f"{name:<10} {threshold:>9.3f} {recall:>8.2%} {rej_spelled:>9.2%} "
+        f"{name:<16} {threshold:>9.3f} {recall:>8.2%} {rej_spelled:>9.2%} "
         f"{rej_random:>9.2%} {auc(scores['test'], scores['spelled']):>8.4f}"
     )
 
@@ -193,7 +237,7 @@ def shipped_model():
         with contextlib.redirect_stdout(io.StringIO()):
             return ngram.score(cleaned)
 
-    return score, ngram.threshold
+    return per_word(score), ngram.threshold
 
 
 def main():
@@ -212,42 +256,18 @@ def main():
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
 
-    pronounced, spelled = split_cmudict(
-        load_cmudict(args.cmudict), args.spelled_threshold
-    )
-    rng = random.Random(args.seed)
-    rng.shuffle(pronounced)
-    n_held = len(pronounced) // 10
-    test, dev, train = (
-        pronounced[:n_held],
-        pronounced[n_held : 2 * n_held],
-        pronounced[2 * n_held :],
-    )
-    randoms = [
-        "".join(rng.choice(ascii_lowercase) for _ in range(len(w))) for w in test
-    ]
-    sets = {"test": test, "spelled": spelled, "random": randoms}
-    print(
-        f"train {len(train)}, dev {len(dev)}, test {len(test)}, "
-        f"spelled-out {len(spelled)}, random {len(randoms)}"
-    )
-    print(
-        f"{'model':<10} {'threshold':>9} {'recall':>8} {'rej.spell':>9} "
-        f"{'rej.rand':>9} {'AUC':>8}"
-    )
-
-    def calibrate(score) -> float:
-        dev_scores = np.nan_to_num([score(w) for w in dev], neginf=-1e9)
-        return float(np.quantile(dev_scores, 1 - args.recall))
+    train, dev, sets = make_splits(args.cmudict, args.spelled_threshold, args.seed)
+    print_header()
 
     # the shipped model was trained on all of cmudict, test and acronyms included
     score, threshold = shipped_model()
     report("shipped", score, threshold, sets)
-    report("shipped@", score, calibrate(score), sets)
+    report("shipped@", score, calibrate(score, dev, args.recall), sets)
     for n in args.orders:
         model = KneserNeyModel(n)
         model.train(train)
-        report(f"kn-{n}", model.score, calibrate(model.score), sets)
+        score = per_word(model.score)
+        report(f"kn-{n}", score, calibrate(score, dev, args.recall), sets)
 
 
 if __name__ == "__main__":
