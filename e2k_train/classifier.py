@@ -1,10 +1,11 @@
 # a character GRU that tells pronounceable words from synthetic negatives,
 # evaluated on the same splits as the Kneser-Ney model in `ngram_kn.py`
 import argparse
+import os
 import random
 import time
 from string import ascii_lowercase
-from typing import Callable, Dict, List, Set
+from typing import Callable, Dict, List, Set, Tuple
 
 import numpy as np
 import torch
@@ -13,6 +14,7 @@ from torch.nn.utils.rnn import pack_padded_sequence, pad_sequence
 
 from ngram_kn import (
     KneserNeyModel,
+    Scorer,
     calibrate,
     load_cmudict,
     make_splits,
@@ -167,6 +169,31 @@ def train_classifier(
     return model
 
 
+def load_or_train(
+    tag: str,
+    seed: int,
+    pos: List[str],
+    neg: List[str],
+    dev_pos: List[str],
+    dev_neg: List[str],
+    dim: int,
+    epochs: int,
+    batch_size: int,
+) -> Classifier:
+    """Loads the classifier of this mix and setup from `vendor/`, training it if absent."""
+    path = f"vendor/gru-{tag}-d{dim}-e{epochs}-b{batch_size}-s{seed}.pth"
+    model = Classifier(dim)
+    if os.path.exists(path):
+        model.load_state_dict(torch.load(path))
+        print(f"  loaded {path}", flush=True)
+        return model
+    start = time.perf_counter()
+    model = train_classifier(pos, neg, dev_pos, dev_neg, dim, epochs, batch_size)
+    torch.save(model.state_dict(), path)
+    print(f"  trained in {time.perf_counter() - start:.0f}s, saved {path}", flush=True)
+    return model
+
+
 def main():
     parser = argparse.ArgumentParser(description="Train pronounceability classifiers.")
     parser.add_argument("--cmudict", default="vendor/cmudict.dict")
@@ -188,35 +215,71 @@ def main():
     args = parser.parse_args()
 
     train, dev, sets = make_splits(args.cmudict, args.spelled_threshold, args.seed)
-    # no real word, and none of the acronyms used for testing, is a negative
-    exclude = set(load_cmudict(args.cmudict)) | set(sets["spelled"])
-    rng = random.Random(args.seed)
-    # held-out negatives come from test words, training ones from training words
-    held_out = {
-        k: negatives(k, sets["test"], args.per_kind, exclude, rng) for k in GENERATORS
-    }
+    exclude, held_out = held_out_negatives(args.cmudict, sets, args.per_kind, args.seed)
 
     kn = KneserNeyModel(5)
     kn.train(train)
     models = {"kn-5": per_word(kn.score)}
     for mix in args.mixes:
-        kinds = mix.split(",")
-        n = len(train) // len(kinds)
-        neg = [w for k in kinds for w in negatives(k, train, n, exclude, rng)]
-        dev_neg = [w for k in kinds for w in negatives(k, dev, n // 8, exclude, rng)]
-        name = "gru-" + "+".join(k[:4] for k in kinds)
+        tag, neg, dev_neg = mix_negatives(mix, train, dev, exclude, args.seed)
+        name = f"gru-{tag}"
         print(f"{name}: {len(train)} positives, {len(neg)} negatives", flush=True)
-        start = time.perf_counter()
-        model = train_classifier(
-            train, neg, dev, dev_neg, args.dim, args.epochs, args.batch_size
+        model = load_or_train(
+            tag,
+            args.seed,
+            train,
+            neg,
+            dev,
+            dev_neg,
+            args.dim,
+            args.epochs,
+            args.batch_size,
         )
-        print(f"  trained in {time.perf_counter() - start:.0f}s", flush=True)
         models[name] = scorer(model)
 
+    report_all(models, dev, sets, held_out, args.recall)
+
+
+def held_out_negatives(
+    cmudict: str, sets: Dict[str, List[str]], per_kind: int, seed: int
+) -> Tuple[Set[str], Dict[str, List[str]]]:
+    """
+    Returns the words no negative may be and the held-out negatives of each
+    kind, drawn from test words.
+    """
+    # no real word, and none of the acronyms used for testing, is a negative
+    exclude = set(load_cmudict(cmudict)) | set(sets["spelled"])
+    rng = random.Random(seed)
+    held_out = {
+        k: negatives(k, sets["test"], per_kind, exclude, rng) for k in GENERATORS
+    }
+    return exclude, held_out
+
+
+def mix_negatives(
+    mix: str, train: List[str], dev: List[str], exclude: Set[str], seed: int
+) -> Tuple[str, List[str], List[str]]:
+    """Training and dev negatives for a comma-separated mix of kinds, as many as `train`."""
+    # seeded by the mix, so a saved classifier matches its negatives in any script
+    rng = random.Random(f"{seed}:{mix}")
+    kinds = mix.split(",")
+    n = len(train) // len(kinds)
+    neg = [w for k in kinds for w in negatives(k, train, n, exclude, rng)]
+    dev_neg = [w for k in kinds for w in negatives(k, dev, n // 8, exclude, rng)]
+    return "+".join(k[0] for k in kinds), neg, dev_neg
+
+
+def report_all(
+    models: Dict[str, Scorer],
+    dev: List[str],
+    sets: Dict[str, List[str]],
+    held_out: Dict[str, List[str]],
+    recall: float,
+):
     print_header()
     thresholds = {}
     for name, score in models.items():
-        thresholds[name] = calibrate(score, dev, args.recall)
+        thresholds[name] = calibrate(score, dev, recall)
         report(name, score, thresholds[name], sets)
 
     print("\nrejection of held-out negatives by kind")
@@ -225,6 +288,8 @@ def main():
         rej = [(score(held_out[k]) <= thresholds[name]).mean() for k in GENERATORS]
         print(f"{name:<16} " + " ".join(f"{r:>10.2%}" for r in rej))
 
+    if "kn-5" not in models:
+        return
     # negatives the n-gram accepts are either its misses or label noise
     score, threshold = models["kn-5"], thresholds["kn-5"]
     print("\nheld-out negatives that kn-5 accepts")
