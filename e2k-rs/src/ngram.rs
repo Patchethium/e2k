@@ -7,54 +7,61 @@ use serde_json::Value;
 use crate::error::format_err;
 use crate::Result;
 
-/// Character n-gram model of one order.
-struct NGramModel {
-    n: usize,
-    /// `{prefix: {appendix: frequency}}`
-    freq: HashMap<String, HashMap<char, f64>>,
+/// One order of an interpolated Kneser-Ney character model.
+struct Level {
+    discount: f64,
+    /// `{gram: count}`
+    counts: HashMap<String, f64>,
+    /// `{history: (total count, distinct next characters)}`
+    hists: HashMap<String, (f64, f64)>,
 }
 
-impl NGramModel {
-    /// Mean log likelihood of the n-grams in `word`, `-inf` if any is unseen.
-    fn score(&self, word: &str) -> f64 {
-        let mut chars: Vec<char> = format!("^{}$", word.to_lowercase()).chars().collect();
-        if chars.len() < self.n {
-            let pad = vec!['^'; self.n - chars.len()];
-            chars.splice(0..0, pad);
+impl Level {
+    fn from_json(data: &Value) -> Result<Self> {
+        let discount = data["discount"]
+            .as_f64()
+            .ok_or_else(|| format_err("`discount` is not a number"))?;
+        let counts: HashMap<String, f64> = data["counts"]
+            .as_object()
+            .ok_or_else(|| format_err("`counts` is not an object"))?
+            .iter()
+            .map(|(gram, c)| {
+                let c = c
+                    .as_f64()
+                    .ok_or_else(|| format_err(format!("count of `{gram}` is not a number")))?;
+                Ok((gram.clone(), c))
+            })
+            .collect::<Result<_>>()?;
+        let mut hists: HashMap<String, (f64, f64)> = HashMap::new();
+        for (gram, &c) in &counts {
+            let mut hist = gram.clone();
+            hist.pop();
+            let entry = hists.entry(hist).or_insert((0.0, 0.0));
+            entry.0 += c;
+            entry.1 += 1.0;
         }
-        let mut total = 0.0;
-        let mut count = 0;
-        for gram in chars.windows(self.n) {
-            let (prefix, appendix) = gram.split_at(self.n - 1);
-            let prefix: String = prefix.iter().collect();
-            let Some(&freq) = self.freq.get(&prefix).and_then(|m| m.get(&appendix[0])) else {
-                log::warn!(
-                    "gram `{prefix}-{}` in word `{word}` is not found in {}-gram model",
-                    appendix[0],
-                    self.n
-                );
-                return f64::NEG_INFINITY;
-            };
-            total += (freq + 1e-10).ln();
-            count += 1;
-        }
-        if count == 0 {
-            log::warn!(
-                "no grams extracted from {}-gram model for word `{word}`",
-                self.n
-            );
-            return f64::NEG_INFINITY;
-        }
-        total / count as f64
+        Ok(Self {
+            discount,
+            counts,
+            hists,
+        })
     }
 }
 
 /// Decides whether a word is pronounceable (transliterate with [`crate::C2K`])
 /// or should be spelled out letter by letter ([`NGram::as_is`]).
+///
+/// A linear SVM over the Kneser-Ney scores of orders 1 to 5, trained by
+/// `e2k_train/hybrid.py`.
 pub struct NGram {
-    /// In the order of `weights`.
-    models: Vec<NGramModel>,
-    weights: Option<Vec<f64>>,
+    orders: Vec<usize>,
+    /// The levels below each model's top order, shared by all models.
+    lower: Vec<Level>,
+    /// The top level of each model, in the order of `orders`.
+    top: Vec<Level>,
+    vocab: f64,
+    weights: Vec<f64>,
+    bias: f64,
     threshold: f64,
     valid_chars: HashSet<char>,
 }
@@ -75,69 +82,116 @@ impl NGram {
     /// Loads the uncompressed `ngram.json`.
     pub fn from_json(json: &str) -> Result<Self> {
         let data: Value = serde_json::from_str(json)?;
-        let threshold = data["threshold"]
-            .as_f64()
-            .ok_or_else(|| format_err("`threshold` is not a number"))?;
-        let weights = match &data["weights"] {
-            Value::Null => None,
-            w => Some(serde_json::from_value::<Vec<f64>>(w.clone())?),
+        let number = |key: &str| {
+            data[key]
+                .as_f64()
+                .ok_or_else(|| format_err(format!("`{key}` is not a number")))
         };
-        let mut valid_chars: HashSet<char> = data["valid_chars"]
-            .as_array()
-            .ok_or_else(|| format_err("`valid_chars` is not a list"))?
-            .iter()
-            .filter_map(|c| c.as_str()?.chars().next())
+        let levels = |key: &str| -> Result<Vec<Level>> {
+            data[key]
+                .as_array()
+                .ok_or_else(|| format_err(format!("`{key}` is not a list")))?
+                .iter()
+                .map(Level::from_json)
+                .collect()
+        };
+        let orders = serde_json::from_value::<Vec<usize>>(data["orders"].clone())?;
+        let weights = serde_json::from_value::<Vec<f64>>(data["weights"].clone())?;
+        let lower = levels("lower")?;
+        let top = levels("top")?;
+        if top.len() != orders.len() || weights.len() != orders.len() {
+            return Err(format_err("`orders`, `top` and `weights` differ in length"));
+        }
+        if orders.iter().any(|&n| n == 0 || n > lower.len() + 1) {
+            return Err(format_err("an order has no levels to score with"));
+        }
+        // the unigrams are the characters seen in training, and the end of word
+        let valid_chars = top[0]
+            .counts
+            .keys()
+            .filter_map(|g| g.chars().next())
+            .filter(|&c| c != '$')
             .collect();
-        valid_chars.insert(' ');
-
-        let models = data["models"]
-            .as_object()
-            .ok_or_else(|| format_err("`models` is not an object"))?
-            .iter()
-            .map(|(n, freq)| {
-                let n = n
-                    .parse()
-                    .map_err(|_| format_err(format!("bad n-gram order `{n}`")))?;
-                let freq =
-                    serde_json::from_value::<HashMap<String, HashMap<String, f64>>>(freq.clone())?
-                        .into_iter()
-                        .map(|(prefix, apps)| {
-                            let apps = apps
-                                .into_iter()
-                                .filter_map(|(a, f)| Some((a.chars().next()?, f)))
-                                .collect();
-                            (prefix, apps)
-                        })
-                        .collect();
-                Ok(NGramModel { n, freq })
-            })
-            .collect::<Result<Vec<_>>>()?;
 
         Ok(Self {
-            models,
+            orders,
+            lower,
+            top,
+            vocab: number("vocab")?,
             weights,
-            threshold,
+            bias: number("bias")?,
+            threshold: number("threshold")?,
             valid_chars,
         })
     }
 
-    /// Weighted (or plain mean, without weights) log likelihood across orders.
-    pub fn score(&self, word: &str) -> f64 {
-        let scores = self.models.iter().map(|m| m.score(word));
-        match &self.weights {
-            Some(w) => w.iter().zip(scores).map(|(w, s)| w * s).sum(),
-            None => scores.sum::<f64>() / self.models.len() as f64,
+    /// P(char | hist) under the `i`-th model, interpolated down to a uniform distribution.
+    fn prob(&self, i: usize, c: char, hist: &[char]) -> f64 {
+        let n = self.orders[i];
+        let mut p = 1.0 / self.vocab;
+        for k in 1..=hist.len() + 1 {
+            let level = if k == n {
+                &self.top[i]
+            } else {
+                &self.lower[k - 1]
+            };
+            let h: String = hist[hist.len() + 1 - k..].iter().collect();
+            let Some(&(total, types)) = level.hists.get(&h) else {
+                continue;
+            };
+            let mut gram = h;
+            gram.push(c);
+            let count = level.counts.get(&gram).copied().unwrap_or(0.0);
+            p = (count - level.discount).max(0.0) / total + level.discount * types / total * p;
         }
+        p
+    }
+
+    /// Mean log probability per character under the `i`-th model, including the end of word.
+    fn model_score(&self, i: usize, word: &str) -> f64 {
+        let n = self.orders[i];
+        let s: Vec<char> = format!("^{word}$").chars().collect();
+        let total: f64 = (1..s.len())
+            .map(|j| self.prob(i, s[j], &s[j.saturating_sub(n - 1)..j]).ln())
+            .sum();
+        total / (s.len() - 1) as f64
+    }
+
+    fn word_score(&self, word: &str) -> f64 {
+        let weighted: f64 = (0..self.orders.len())
+            .map(|i| self.weights[i] * self.model_score(i, word))
+            .sum();
+        weighted + self.bias
+    }
+
+    /// How pronounceable `word` is, valid above [`NGram::threshold`].
+    /// A phrase scores as its least pronounceable word, `-inf` without any letters.
+    pub fn score(&self, word: &str) -> f64 {
+        let scores: Vec<f64> = word
+            .to_lowercase()
+            .split_whitespace()
+            .map(|part| {
+                part.chars()
+                    .filter(|c| self.valid_chars.contains(c))
+                    .collect::<String>()
+            })
+            .filter(|part| !part.is_empty())
+            .map(|part| self.word_score(&part))
+            .collect();
+        if scores.is_empty() {
+            return f64::NEG_INFINITY;
+        }
+        scores.into_iter().fold(f64::INFINITY, f64::min)
+    }
+
+    /// The score above which a word is valid.
+    pub fn threshold(&self) -> f64 {
+        self.threshold
     }
 
     /// Whether `word` looks like it should be transliterated rather than spelled out.
     pub fn is_valid(&self, word: &str) -> bool {
-        let cleaned: String = word
-            .to_lowercase()
-            .chars()
-            .filter(|c| self.valid_chars.contains(c))
-            .collect();
-        self.score(&cleaned) > self.threshold
+        self.score(word) > self.threshold
     }
 
     /// Spells `word` out letter by letter, e.g. `ussr` -> `ユーエスエスアール`.

@@ -67,8 +67,6 @@ ap.in_table();
 | `ngram(word)`                | `ngram.is_valid(word)`                |
 | `ngram.as_is(word)`          | `ngram.as_is(word)`                   |
 
-N-gram warnings about unseen grams go through the [`log`](https://crates.io/crates/log) crate.
-
 ## Testing
 
 ```bash

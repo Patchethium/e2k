@@ -96,7 +96,6 @@ name = "e2k"
 version = "0.7.1"
 dependencies = [
  "half",
- "log",
  "ndarray",
  "rand",
  "serde_json",

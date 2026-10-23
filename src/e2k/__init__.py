@@ -1,4 +1,4 @@
-from .inference import P2K, C2K, AccentPredictor, NGramCollection as NGram
+from .inference import P2K, C2K, AccentPredictor, NGram
 import os.path
 
 # make internal modules invisible

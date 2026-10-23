@@ -56,11 +56,13 @@ uv run accent.py
 
 Download [cmudict.dict](https://raw.githubusercontent.com/cmusphinx/cmudict/master/cmudict.dict) and place it in `e2k_train/vendor/`.
 
-Train the n-gram model:
+Train the n-gram model, a linear SVM over Kneser-Ney scores of orders 1 to 5, and export it with a threshold that keeps 99% of held-out words:
 
 ```bash
-uv run ngram.py --train
+uv run hybrid.py --mixes random,initialism,devowel --recall 0.99 --export vendor/ngram.json.zip
 ```
+
+Copy `vendor/ngram.json.zip` to `src/e2k/models/` to ship it. `ngram_kn.py` and `classifier.py` hold the plain Kneser-Ney model and the GRU classifier it was compared with.
 ### 4. E2K Model
 
 ```bash

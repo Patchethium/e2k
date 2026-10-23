@@ -67,7 +67,7 @@ print(f"Katakana: {katakana}, Accent: {accent}")
 
 ### 3. Pronunciation Validity (N-Gram Model)
 
-You can check if a word should be transliterated or spelled as-is.
+You can check if a word should be transliterated or spelled as-is. A linear SVM over character n-gram scores decides, trained on CMUdict words against synthetic acronyms, abbreviations and random strings.
 
 ```python
 from e2k import NGram
@@ -105,9 +105,11 @@ accent.in_table # valid katakana symbols for accent prediction
 | Katakana Prediction | P2K             | BLEU ↑     | 0.89  |
 | Katakana Prediction | C2K             | BLEU ↑     | 0.92  |
 | Accent Prediction   | AccentPredictor | Accuracy ↑ | 88.4% |
+| Pronunciation Validity | NGram        | Recall ↑   | 98.9% |
+| Pronunciation Validity | NGram        | Acronym rejection ↑ | 90.5% |
 
 > [!NOTE]
-> I'm too dumb to figure out how to properly evaluate the n-gram model.
+> The n-gram model is evaluated on held-out CMUdict words for recall, and on the 189 CMUdict acronyms whose pronunciation spells them out letter by letter for rejection.
 
 ## Develop
 

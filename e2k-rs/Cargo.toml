@@ -11,7 +11,6 @@ keywords = ["katakana", "japanese", "transliteration", "g2p"]
 
 [dependencies]
 half = "2"
-log = "0.4"
 ndarray = "0.17"
 rand = "0.9"
 serde_json = { version = "1", features = ["preserve_order"] }

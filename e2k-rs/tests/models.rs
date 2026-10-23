@@ -49,7 +49,14 @@ fn accent() {
 fn ngram() {
     let ngram = NGram::from_path(model("ngram.json.zip")).unwrap();
     assert!(ngram.is_valid("doggy"));
+    assert!(ngram.is_valid("GeoGaddi"));
     assert!(!ngram.is_valid("ussr"));
+    assert!(!ngram.is_valid("fbi"));
+    // a phrase is as valid as its least pronounceable word
+    assert!(ngram.is_valid("new york"));
+    assert!(!ngram.is_valid("visit the ussr"));
+    assert!(!ngram.is_valid("!!"));
+    assert_eq!(ngram.score(""), f64::NEG_INFINITY);
     assert_eq!(ngram.as_is("ussr"), "ユーエスエスアール");
 }
 

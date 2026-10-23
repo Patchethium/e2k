@@ -5,7 +5,6 @@ from typing import Callable, List, Literal, Optional, Dict, Tuple, Union
 import importlib.resources
 from functools import partial
 import math
-import statistics as st
 import json
 
 
@@ -399,41 +398,58 @@ class AccentPredictor:
         return self.forward(x)
 
 
-class NGramModel:
-    def __init__(self, n, freq={}):
-        self.n = n
-        self.freq = freq  # {prefix: {appendix: frequency}}
+class KneserNey:
+    """Interpolated Kneser-Ney character model, see `e2k_train/ngram_kn.py`."""
 
-    def score(self, word):
-        """Score the log likelihood of a word or phrase being valid."""
-        # Handle multi-word phrases
-        word = word.lower()
-        word = f"^{word}$"
-        if len(word) < self.n:
-            word = "^" * (self.n - len(word)) + word
-        ngrams = [word[i : i + self.n] for i in range(len(word) - self.n + 1)]
+    def __init__(
+        self,
+        levels: List[Tuple[float, Dict[str, int], Dict[str, Tuple[int, int]]]],
+        vocab: int,
+    ):
+        # levels[k - 1]: (discount, {gram: count}, {history: (total, types)}) of order k
+        self.levels = levels
+        self.vocab = vocab
 
-        # Calculate score for each n-gram
-        scores = []
-        for ngram in ngrams:
-            prefix, appendix = ngram[:-1], ngram[-1]
+    def prob(self, char: str, hist: str) -> float:
+        """P(char | hist), interpolated down to a uniform distribution."""
+        p = 1.0 / self.vocab
+        for k in range(1, len(hist) + 2):
+            discount, counts, hists = self.levels[k - 1]
+            h = hist[len(hist) - k + 1 :]
+            if h not in hists:
+                continue
+            total, types = hists[h]
+            c = counts.get(h + char, 0)
+            p = max(c - discount, 0) / total + discount * types / total * p
+        return p
 
-            if prefix not in self.freq or appendix not in self.freq[prefix]:
-                print(
-                    f"Warning: gram `{prefix}-{appendix}` in word `{word}` is not found in {self.n}-gram model"
-                )
-                return -float("inf")  # Unknown n-gram
-
-            scores.append(math.log(self.freq[prefix][appendix] + 1e-10))
-        if len(scores) == 0:
-            print(
-                f"Warning: no grams extracted from {self.n}-gram model for word `{word}`"
-            )
-            return -float("inf")
-        return st.mean(scores)
+    def score(self, word: str) -> float:
+        """Mean log probability per character, including the end of word."""
+        s = f"^{word}$"
+        n = len(self.levels)
+        logps = [
+            math.log(self.prob(s[i], s[max(0, i - n + 1) : i]))
+            for i in range(1, len(s))
+        ]
+        return sum(logps) / len(logps)
 
 
-class NGramCollection:
+def kn_level(data: dict) -> Tuple[float, Dict[str, int], Dict[str, Tuple[int, int]]]:
+    counts = data["counts"]
+    hists = {}
+    for gram, c in counts.items():
+        total, types = hists.get(gram[:-1], (0, 0))
+        hists[gram[:-1]] = (total + c, types + 1)
+    return data["discount"], counts, hists
+
+
+class NGram:
+    """
+    Decides whether a word is pronounceable, to transliterate it with C2K,
+    or should be spelled out letter by letter with `as_is`.
+    A linear SVM over the Kneser-Ney scores of orders 1 to 5, see `e2k_train/hybrid.py`.
+    """
+
     def __init__(self):
         path = get_asset_path("ngram.json.zip")
         with zipfile.ZipFile(path, "r", compression=zipfile.ZIP_LZMA) as z:
@@ -441,11 +457,16 @@ class NGramCollection:
                 data = json.loads(f.read())
 
         self.weights = data["weights"]
+        self.bias = data["bias"]
         self.threshold = data["threshold"]
-        self.valid_chars = set(data["valid_chars"] + [" "])
-
-        # a list keeps the models in the same order as `weights`
-        self.models = [NGramModel(int(k), v) for k, v in data["models"].items()]
+        # the levels below each model's top order are shared by all models
+        lower = [kn_level(d) for d in data["lower"]]
+        self.models = [
+            KneserNey(lower[: n - 1] + [kn_level(top)], data["vocab"])
+            for n, top in zip(data["orders"], data["top"])
+        ]
+        # the unigrams are the characters seen in training, and the end of word
+        self.valid_chars = set(data["top"][0]["counts"]) - {"$"}
 
         self.spell_table = {
             "a": "エー",
@@ -476,23 +497,30 @@ class NGramCollection:
             "z": "ゼット",
         }
 
-    def score(self, word):
-        """Calculate weighted average score across all n-gram models."""
-        scores = [model.score(word) for model in self.models]
+    def score(self, word: str) -> float:
+        """
+        How pronounceable `word` is, valid above `threshold`.
+        A phrase scores as its least pronounceable word.
+        """
+        parts = [
+            "".join(c for c in part if c in self.valid_chars)
+            for part in word.lower().split()
+        ]
+        parts = [p for p in parts if p]
+        if not parts:
+            return -math.inf
+        return min(self._score(p) for p in parts)
 
-        if self.weights:
-            return sum(w * s for w, s in zip(self.weights, scores))
-        else:
-            return st.mean(scores)
+    def _score(self, word: str) -> float:
+        scores = [model.score(word) for model in self.models]
+        return sum(w * s for w, s in zip(self.weights, scores)) + self.bias
 
     def as_is(self, word: str) -> str:
         cleaned = [c for c in word if c in self.spell_table]
         return "".join(self.spell_table[c] for c in cleaned)
 
     def __call__(self, word: str) -> bool:
-        word = word.lower()
-        cleaned = "".join(c for c in word if c in self.valid_chars)
-        return self.score(cleaned) > self.threshold
+        return self.score(word) > self.threshold
 
 
 if __name__ == "__main__":
@@ -502,7 +530,7 @@ if __name__ == "__main__":
     g2p = G2p()
     parser = argparse.ArgumentParser()
     args = parser.parse_args()
-    ngram = NGramCollection()
+    ngram = NGram()
     p2k = P2K()
     c2k = C2K()
     word = "vox"

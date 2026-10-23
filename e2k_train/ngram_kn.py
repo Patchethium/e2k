@@ -1,8 +1,6 @@
 # interpolated Kneser-Ney character n-gram model for pronounceability,
 # trained and evaluated on cmudict. a candidate replacement for `ngram.py`
 import argparse
-import contextlib
-import io
 import math
 import random
 import re
@@ -173,7 +171,7 @@ Scorer = Callable[[List[str]], np.ndarray]
 
 
 def per_word(score: Callable[[str], float]) -> Scorer:
-    # unseen grams score -inf in the shipped model, which breaks the ranks
+    # words without letters score -inf in the shipped model, which breaks the ranks
     return lambda words: np.nan_to_num([score(w) for w in words], neginf=-1e9)
 
 
@@ -230,14 +228,7 @@ def shipped_model():
     from e2k import NGram
 
     ngram = NGram()
-
-    def score(word: str) -> float:
-        cleaned = "".join(c for c in word.lower() if c in ngram.valid_chars)
-        # the runtime prints a warning for every unseen gram
-        with contextlib.redirect_stdout(io.StringIO()):
-            return ngram.score(cleaned)
-
-    return per_word(score), ngram.threshold
+    return per_word(ngram.score), ngram.threshold
 
 
 def main():
@@ -259,7 +250,7 @@ def main():
     train, dev, sets = make_splits(args.cmudict, args.spelled_threshold, args.seed)
     print_header()
 
-    # the shipped model was trained on all of cmudict, test and acronyms included
+    # the shipped model is the hybrid of `hybrid.py`, trained on the same split
     score, threshold = shipped_model()
     report("shipped", score, threshold, sets)
     report("shipped@", score, calibrate(score, dev, args.recall), sets)

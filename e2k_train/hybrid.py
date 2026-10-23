@@ -1,9 +1,11 @@
 # a linear SVM over the Kneser-Ney scores of orders 1 to 5, trained on the
 # synthetic negatives of `classifier.py`
 import argparse
+import json
 import random
 import time
-from typing import Dict, List
+import zipfile
+from typing import Dict, List, Tuple
 
 import numpy as np
 from sklearn.pipeline import make_pipeline
@@ -17,7 +19,7 @@ from classifier import (
     report_all,
     scorer,
 )
-from ngram_kn import KneserNeyModel, make_splits, per_word
+from ngram_kn import KneserNeyModel, calibrate, make_splits, per_word
 
 ORDERS = [1, 2, 3, 4, 5]
 
@@ -75,6 +77,15 @@ def main():
     parser.add_argument("--per-kind", type=int, default=2000)
     parser.add_argument("--folds", type=int, default=5)
     parser.add_argument("--c", type=float, default=1.0)
+    parser.add_argument(
+        "--gru",
+        action="store_true",
+        help="also compare with the GRU of `classifier.py`",
+    )
+    parser.add_argument(
+        "--export",
+        help="where to write the runtime model of the first mix, like vendor/ngram.json.zip",
+    )
     args = parser.parse_args()
 
     train, dev, sets = make_splits(args.cmudict, args.spelled_threshold, args.seed)
@@ -95,18 +106,65 @@ def main():
         )
 
         clf = make_pipeline(StandardScaler(), LinearSVC(C=args.c)).fit(x, y)
-        weights = clf[-1].coef_[0]
         print(
-            "  weights " + " ".join(f"kn{n}={w:+.2f}" for n, w in zip(ORDERS, weights))
+            "  scaled weights "
+            + " ".join(f"kn{n}={w:+.2f}" for n, w in zip(ORDERS, clf[-1].coef_[0]))
         )
-        models[f"hyb-{tag}"] = lambda words, clf=clf: clf.decision_function(
-            featurize(words)
-        )
-        models[f"gru-{tag}"] = scorer(
-            load_or_train(tag, args.seed, train, neg, dev, dev_neg, 64, 5, 256)
-        )
+        weights, bias = fold_scaler(clf)
+        score = lambda words, w=weights, b=bias: featurize(words) @ w + b
+        models[f"hyb-{tag}"] = score
+        if args.gru:
+            models[f"gru-{tag}"] = scorer(
+                load_or_train(tag, args.seed, train, neg, dev, dev_neg, 64, 5, 256)
+            )
+        if args.export and mix == args.mixes[0]:
+            threshold = calibrate(score, dev, args.recall)
+            export(args.export, featurize, weights, bias, threshold)
+            print(f"  exported to {args.export}", flush=True)
 
     report_all(models, dev, sets, held_out, args.recall)
+
+
+def fold_scaler(clf) -> Tuple[np.ndarray, float]:
+    """The weights and bias on raw scores of a scaler + linear SVM pipeline."""
+    scaler, svm = clf[0], clf[-1]
+    weights = svm.coef_[0] / scaler.scale_
+    bias = float(svm.intercept_[0] - weights @ scaler.mean_)
+    return weights, bias
+
+
+def export(
+    path: str, featurize: Featurizer, weights: np.ndarray, bias: float, threshold: float
+):
+    """
+    Writes the runtime model: a word is pronounceable when
+    `weights @ [score of each order] + bias > threshold`.
+    """
+    models = featurize.models
+    # below its top order, every model counts the same as the highest one does
+    lower = models[-1]
+    for model in models[:-1]:
+        for k in range(1, model.n):
+            assert model.counts[k] == lower.counts[k]
+            assert model.discounts[k] == lower.discounts[k]
+
+    def level(model: KneserNeyModel, k: int) -> dict:
+        return {"discount": model.discounts[k], "counts": model.counts[k]}
+
+    ser = {
+        "orders": ORDERS,
+        "vocab": lower.vocab,
+        # the levels below a model's top order, shared by all models
+        "lower": [level(lower, k) for k in range(1, lower.n)],
+        # the top level of each model
+        "top": [level(model, model.n) for model in models],
+        "weights": weights.tolist(),
+        "bias": bias,
+        "threshold": threshold,
+    }
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_LZMA) as z:
+        with z.open("ngram.json", "w") as f:
+            f.write(json.dumps(ser, separators=(",", ":")).encode("utf-8"))
 
 
 if __name__ == "__main__":
