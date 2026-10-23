@@ -508,32 +508,3 @@ class NGramCollection:
         word = word.lower()
         cleaned = "".join(c for c in word if c in self.valid_chars)
         return self.score(cleaned) > self.threshold
-
-
-if __name__ == "__main__":
-    import argparse
-    from g2p_en import G2p
-
-    g2p = G2p()
-    parser = argparse.ArgumentParser()
-    args = parser.parse_args()
-    ngram = NGramCollection()
-    p2k = P2K()
-    c2k = C2K()
-    word = "vox"
-    phonemes = g2p(word)
-    print(word)
-    print(f"Ngram result: {'Valid' if ngram(word) else 'Invalid'}")
-    print(f"As is: {ngram.as_is(word)}")
-    print("P2K: ", p2k(phonemes))
-    print("C2K: ", c2k(word))
-    print("P2K (top_k): ", p2k(phonemes, "top_k", k=2))
-    print("C2K (top_k): ", c2k(word, "top_k", k=2))
-    print("P2K (top_p): ", p2k(phonemes, "top_p", p=0.7, t=2))
-    print("C2K (top_p): ", c2k(word, "top_p", p=0.7, t=2))
-
-    ap = AccentPredictor()
-    katakana = p2k(phonemes)
-    print(f"P2K Katakana: {katakana}, Accent: {ap(katakana)}")
-    katakana = c2k(word)
-    print(f"C2K Katakana: {katakana}, Accent: {ap(katakana)}")
