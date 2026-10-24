@@ -47,6 +47,13 @@ c2k(word, "top_p", p=0.9, t=2)
 c2k(word, "top_k", k=5)
 ```
 
+Both models also come in a `turbo` variant, a smaller model distilled from the default one. It's about twice as fast with comparable accuracy, though its outputs differ on some words.
+
+```python
+c2k = C2K(model="turbo")
+p2k = P2K(model="turbo")
+```
+
 ### 2. Pitch Accent Prediction
 
 The library includes an RNN-based pitch accent predictor trained on [Unidic](https://clrd.ninjal.ac.jp/unidic/).
