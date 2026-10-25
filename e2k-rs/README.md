@@ -8,7 +8,7 @@ The crate isn't on crates.io, as the models exceed its size limit. Depend on it 
 
 ```toml
 [dependencies]
-e2k = { git = "https://github.com/Patchethium/e2k", tag = "v0.8.1" }
+e2k = { git = "https://github.com/Patchethium/e2k", tag = "v0.8.2" }
 ```
 
 The models are tracked in git under [`src/e2k/models`](../src/e2k/models), shared with the Python package. The `embedded()` constructors build them into your binary (about 11 MB), and `embedded_turbo()` adds about 1.1 MB per turbo model. The linker keeps only the models your binary loads. To load other model files at runtime instead, use `from_path`, or `from_bytes` (`from_zip_bytes` for `NGram`).
