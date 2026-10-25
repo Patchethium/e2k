@@ -40,11 +40,11 @@ print(c2k(word))       # ジオガディ
 ```
 
 > [!NOTE]
-> While defaulting on `greedy`, both models support `top_k` and `top_p` decoding strategies. It varies the output between each inference, use when you know what you're doing.
+> While defaulting on `greedy`, both models support `top_k` and `top_p` decoding strategies. It varies the output between each inference, use when you know what you're doing. Pass `seed` to make it reproducible.
 
 ```python
 c2k(word, "top_p", p=0.9, t=2)
-c2k(word, "top_k", k=5)
+c2k(word, "top_k", k=5, seed=42)
 ```
 
 Both models also come in a `turbo` variant, a smaller model distilled from the default one. It's about twice as fast with comparable accuracy, though its outputs differ on some words.

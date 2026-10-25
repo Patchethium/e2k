@@ -161,19 +161,21 @@ def greedy(step_dec: np.ndarray):
     return np.argmax(step_dec, axis=-1)
 
 
-def top_k(step_dec: np.ndarray, k: int):
+def top_k(step_dec: np.ndarray, k: int, rng=np.random):
     """
     step_dec: [N]
+    rng: `np.random` or a `np.random.Generator`
     """
     candidates = np.flip(np.argsort(step_dec, axis=-1), axis=-1)[:k]
-    return np.random.choice(candidates)
+    return rng.choice(candidates)
 
 
-def top_p(step_dec: np.ndarray, p: float, t: float):
+def top_p(step_dec: np.ndarray, p: float, t: float, rng=np.random):
     """
     step_dec: [N]
     p: max probability
     t: temperature
+    rng: `np.random` or a `np.random.Generator`
     """
     # softmax
     step_dec = np.exp((step_dec - step_dec.max()) / t)
@@ -185,7 +187,7 @@ def top_p(step_dec: np.ndarray, p: float, t: float):
         cumsum += step_dec[sorted_idx[i]]
         i += 1
     candidates = sorted_idx[:i]
-    return np.random.choice(candidates)
+    return rng.choice(candidates)
 
 
 def to_fp32(weights) -> Dict[str, np.ndarray]:
@@ -304,7 +306,12 @@ class BaseE2K:
         k: Optional[int] = None,
         p: Optional[float] = None,
         t: Optional[float] = None,
+        seed: Optional[int] = None,
     ) -> str:
+        """
+        `seed` makes `top_k` and `top_p` reproducible, without it they draw from `np.random`.
+        """
+        rng = np.random if seed is None else np.random.default_rng(seed)
         if isinstance(src, str):
             src = src.lower()
         src = list(filter(lambda x: x in self.in_table, src))
@@ -315,7 +322,9 @@ class BaseE2K:
             case "greedy" | None:
                 tgt = self.s2s.forward(src, greedy)
             case "top_k":
-                tgt = self.s2s.forward(src, partial(top_k, k=k if k is not None else 2))
+                tgt = self.s2s.forward(
+                    src, partial(top_k, k=k if k is not None else 2, rng=rng)
+                )
             case "top_p":
                 tgt = self.s2s.forward(
                     src,
@@ -323,6 +332,7 @@ class BaseE2K:
                         top_p,
                         p=p if p is not None else 0.9,
                         t=t if t is not None else 1.0,
+                        rng=rng,
                     ),
                 )
             case _:
