@@ -17,21 +17,21 @@ macro_rules! model {
 impl C2K {
     /// Loads the C2K model built into the binary.
     pub fn embedded() -> Result<Self> {
-        Self::from_bytes(model!("model-c2k.npz"))
+        Self::from_bytes(model!("model-c2k.safetensors"))
     }
 }
 
 impl P2K {
     /// Loads the P2K model built into the binary.
     pub fn embedded() -> Result<Self> {
-        Self::from_bytes(model!("model-p2k.npz"))
+        Self::from_bytes(model!("model-p2k.safetensors"))
     }
 }
 
 impl AccentPredictor {
     /// Loads the accent model built into the binary.
     pub fn embedded() -> Result<Self> {
-        Self::from_bytes(model!("accent.npz"))
+        Self::from_bytes(model!("accent.safetensors"))
     }
 }
 

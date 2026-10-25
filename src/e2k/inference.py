@@ -1,5 +1,6 @@
 # Description: Inference functions for the E2K model in numpy
 import zipfile
+import struct
 import numpy as np
 from typing import Callable, List, Literal, Optional, Dict, Tuple, Union
 import importlib.resources
@@ -190,6 +191,32 @@ def top_p(step_dec: np.ndarray, p: float, t: float, rng=np.random):
     return rng.choice(candidates)
 
 
+# safetensors dtypes the models may use, all little-endian
+SAFETENSORS_DTYPES = {"F16": "<f2", "F32": "<f4", "F64": "<f8"}
+
+
+def load_safetensors(data: bytes) -> Tuple[Dict[str, np.ndarray], Dict[str, str]]:
+    """
+    Reads a safetensors file with numpy only: a u64 header length, a JSON header
+    of `{name: {dtype, shape, data_offsets}}` plus `__metadata__`, then the raw tensors.
+    Returns the tensors and the metadata.
+    """
+    (header_len,) = struct.unpack("<Q", data[:8])
+    header = json.loads(data[8 : 8 + header_len])
+    metadata = header.pop("__metadata__", {})
+    body = memoryview(data)[8 + header_len :]
+    weights = {}
+    for name, info in header.items():
+        if info["dtype"] not in SAFETENSORS_DTYPES:
+            raise ValueError(f"tensor `{name}` has unsupported dtype {info['dtype']}")
+        dtype = np.dtype(SAFETENSORS_DTYPES[info["dtype"]])
+        start, end = info["data_offsets"]
+        if end > len(body) or end - start != math.prod(info["shape"]) * dtype.itemsize:
+            raise ValueError(f"tensor `{name}` has bad data offsets")
+        weights[name] = np.frombuffer(body[start:end], dtype).reshape(info["shape"])
+    return weights, metadata
+
+
 def to_fp32(weights) -> Dict[str, np.ndarray]:
     """
     fp32 is usually faster than fp16 on CPU
@@ -204,9 +231,13 @@ def to_fp32(weights) -> Dict[str, np.ndarray]:
 
 
 class S2S:
-    def __init__(self, weights: Dict[str, np.ndarray], max_len: int = 16):
+    def __init__(
+        self,
+        weights: Dict[str, np.ndarray],
+        metadata: Dict[str, str],
+        max_len: int = 16,
+    ):
         weights = to_fp32(weights)
-        metadata = weights["metadata"].item()
         self.sos_idx = int(metadata["sos_idx"])
         self.eos_idx = int(metadata["eos_idx"])
         self.in_table = list(metadata["in_table"].split("\0"))
@@ -290,8 +321,7 @@ class S2S:
 
 class BaseE2K:
     def __init__(self, name: str, max_len: int = 16):
-        data = np.load(get_asset_path(name), allow_pickle=True)
-        self.s2s = S2S(data, max_len)
+        self.s2s = S2S(*load_safetensors(read_asset(name)), max_len)
         self.in_table = {c: i for i, c in enumerate(self.s2s.in_table)}
         self.out_table = self.s2s.out_table
 
@@ -350,6 +380,10 @@ def get_asset_path(filename) -> str:
     return importlib.resources.files("e2k.models").joinpath(filename)
 
 
+def read_asset(filename) -> bytes:
+    return get_asset_path(filename).read_bytes()
+
+
 # "base": the full width model, "turbo": a width 128 model distilled from it,
 # about twice as fast with comparable accuracy
 ModelVariant = Literal["base", "turbo"]
@@ -358,9 +392,9 @@ ModelVariant = Literal["base", "turbo"]
 def model_file(task: str, model: ModelVariant) -> str:
     match model:
         case "base":
-            return f"model-{task}.npz"
+            return f"model-{task}.safetensors"
         case "turbo":
-            return f"model-{task}-turbo.npz"
+            return f"model-{task}-turbo.safetensors"
         case _:
             raise ValueError(f"Unknown model: {model=}")
 
@@ -377,9 +411,8 @@ class C2K(BaseE2K):
 
 class AccentPredictor:
     def __init__(self):
-        name = "accent.npz"
-        weights = to_fp32(np.load(get_asset_path(name), allow_pickle=True))
-        metadata = weights["metadata"].item()
+        weights, metadata = load_safetensors(read_asset("accent.safetensors"))
+        weights = to_fp32(weights)
         self.symbols = list(metadata["in_table"].split("\0"))
         self.in_table = {c: i for i, c in enumerate(self.symbols)}
         self.emb = Embedding(weights["emb.weight"])

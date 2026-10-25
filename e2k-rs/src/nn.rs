@@ -3,7 +3,7 @@
 use ndarray::{concatenate, s, Array1, Array2, ArrayView1, ArrayView2, Axis};
 
 use crate::error::format_err;
-use crate::npz::Npz;
+use crate::safetensors::SafeTensors;
 use crate::Result;
 
 pub(crate) struct Linear {
@@ -17,10 +17,10 @@ impl Linear {
         Self { weight, bias }
     }
 
-    pub fn load(npz: &Npz, prefix: &str) -> Result<Self> {
+    pub fn load(st: &SafeTensors, prefix: &str) -> Result<Self> {
         Ok(Self::new(
-            npz.array2(&format!("{prefix}.weight"))?,
-            npz.array1(&format!("{prefix}.bias"))?,
+            st.array2(&format!("{prefix}.weight"))?,
+            st.array1(&format!("{prefix}.bias"))?,
         ))
     }
 
@@ -40,9 +40,9 @@ pub(crate) struct Embedding {
 }
 
 impl Embedding {
-    pub fn load(npz: &Npz, name: &str) -> Result<Self> {
+    pub fn load(st: &SafeTensors, name: &str) -> Result<Self> {
         Ok(Self {
-            weight: npz.array2(name)?,
+            weight: st.array2(name)?,
         })
     }
 
@@ -69,9 +69,9 @@ pub(crate) struct Gru {
 
 impl Gru {
     /// Loads e.g. `encoder.weight_ih_l0{suffix}` where `suffix` is `""` or `"_reverse"`.
-    pub fn load(npz: &Npz, prefix: &str, suffix: &str) -> Result<Self> {
-        let get2 = |n: &str| npz.array2(&format!("{prefix}.{n}_l0{suffix}"));
-        let get1 = |n: &str| npz.array1(&format!("{prefix}.{n}_l0{suffix}"));
+    pub fn load(st: &SafeTensors, prefix: &str, suffix: &str) -> Result<Self> {
+        let get2 = |n: &str| st.array2(&format!("{prefix}.{n}_l0{suffix}"));
+        let get1 = |n: &str| st.array1(&format!("{prefix}.{n}_l0{suffix}"));
         let weight_hh = get2("weight_hh")?;
         let hidden = weight_hh.ncols();
         if weight_hh.nrows() != 3 * hidden {
@@ -143,9 +143,9 @@ pub(crate) struct Memory {
 }
 
 impl Mha {
-    pub fn load(npz: &Npz, prefix: &str, num_heads: usize) -> Result<Self> {
-        let w = npz.array2(&format!("{prefix}.in_proj_weight"))?;
-        let b = npz.array1(&format!("{prefix}.in_proj_bias"))?;
+    pub fn load(st: &SafeTensors, prefix: &str, num_heads: usize) -> Result<Self> {
+        let w = st.array2(&format!("{prefix}.in_proj_weight"))?;
+        let b = st.array1(&format!("{prefix}.in_proj_bias"))?;
         let dim = w.ncols();
         if w.nrows() != 3 * dim || b.len() != 3 * dim || dim % num_heads != 0 {
             return Err(format_err(format!("{prefix}: bad attention weight shape")));
@@ -160,7 +160,7 @@ impl Mha {
             q_proj: proj(0),
             k_proj: proj(1),
             v_proj: proj(2),
-            o_proj: Linear::load(npz, &format!("{prefix}.out_proj"))?,
+            o_proj: Linear::load(st, &format!("{prefix}.out_proj"))?,
             num_heads,
             scale: ((dim / num_heads) as f32).sqrt(),
         })

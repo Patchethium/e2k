@@ -177,6 +177,7 @@ cython_debug/
 *.pth
 *.npy
 *.npz
+*.safetensors
 *.zip
 # tensorboard logs
 runs/
@@ -185,9 +186,9 @@ uv.lock
 # jupyter notebooks
 *.ipynb
 # shipped model weights, used by the Python package and e2k-rs
-!src/e2k/models/model-c2k.npz
-!src/e2k/models/model-p2k.npz
-!src/e2k/models/model-c2k-turbo.npz
-!src/e2k/models/model-p2k-turbo.npz
-!src/e2k/models/accent.npz
+!src/e2k/models/model-c2k.safetensors
+!src/e2k/models/model-p2k.safetensors
+!src/e2k/models/model-c2k-turbo.safetensors
+!src/e2k/models/model-p2k-turbo.safetensors
+!src/e2k/models/accent.safetensors
 !src/e2k/models/ngram.json.zip

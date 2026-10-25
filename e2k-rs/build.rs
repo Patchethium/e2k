@@ -5,9 +5,9 @@
 use std::path::Path;
 
 const MODELS: [&str; 4] = [
-    "model-c2k.npz",
-    "model-p2k.npz",
-    "accent.npz",
+    "model-c2k.safetensors",
+    "model-p2k.safetensors",
+    "accent.safetensors",
     "ngram.json.zip",
 ];
 

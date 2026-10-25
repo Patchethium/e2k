@@ -19,4 +19,4 @@ members = ["e2k_train"]
 where = ["src"]
 
 [tool.setuptools.package-data]
-e2k = ["models/*.npz", "models/ngram.json.zip"]
+e2k = ["models/*.safetensors", "models/ngram.json.zip"]

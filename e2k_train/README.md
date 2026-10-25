@@ -79,10 +79,13 @@ Run with `--help` for more details.
 uv run eval.py --data ./vendor/katakana_dict.jsonl --model model.pth --p2k
 ```
 
-### Export to NumPy
+### Export
 
-Run with `--help` for more details.
+`export.py` converts any checkpoint, including the shrunk ones from `shrink.py`, to the `.safetensors` files both runtimes load. Run with `--help` for more details.
 
 ```bash
-uv run export.py --model model.pth --p2k --output model-p2k.npz
+uv run export.py --model model.pth --p2k --output model-p2k.safetensors
+uv run export.py --model accent.pth --accent --output accent.safetensors
 ```
+
+Copy the output to `src/e2k/models/` to ship it. `.npz` models from e2k 0.7 and earlier convert with `uv run npz2safetensors.py model.npz`.

@@ -7,7 +7,7 @@ use rand::Rng;
 
 use crate::error::format_err;
 use crate::nn::{softmax_inplace, Embedding, Gru, Linear, Mha};
-use crate::npz::Npz;
+use crate::safetensors::SafeTensors;
 use crate::Result;
 
 /// How the next token is picked at each decoding step.
@@ -99,14 +99,14 @@ struct S2S {
 }
 
 impl S2S {
-    fn new(npz: Npz) -> Result<Self> {
+    fn new(st: SafeTensors) -> Result<Self> {
         let parse_idx = |key: &str| -> Result<usize> {
-            npz.meta(key)?
+            st.meta(key)?
                 .parse()
                 .map_err(|_| format_err(format!("metadata `{key}` is not an integer")))
         };
         let split = |s: &str| s.split('\0').map(String::from).collect::<Vec<_>>();
-        let in_table = split(npz.meta("in_table")?);
+        let in_table = split(st.meta("in_table")?);
         let in_index = in_table
             .iter()
             .enumerate()
@@ -117,16 +117,16 @@ impl S2S {
             eos_idx: parse_idx("eos_idx")?,
             in_table,
             in_index,
-            out_table: split(npz.meta("out_table")?),
-            e_emb: Embedding::load(&npz, "e_emb.weight")?,
-            k_emb: Embedding::load(&npz, "k_emb.weight")?,
-            encoder: Gru::load(&npz, "encoder", "")?,
-            encoder_reverse: Gru::load(&npz, "encoder", "_reverse")?,
-            encoder_fc: Linear::load(&npz, "encoder_fc.0")?,
-            pre_decoder: Gru::load(&npz, "pre_decoder", "")?,
-            post_decoder: Gru::load(&npz, "post_decoder", "")?,
-            attn: Mha::load(&npz, "attn", 4)?,
-            fc: Linear::load(&npz, "fc")?,
+            out_table: split(st.meta("out_table")?),
+            e_emb: Embedding::load(&st, "e_emb.weight")?,
+            k_emb: Embedding::load(&st, "k_emb.weight")?,
+            encoder: Gru::load(&st, "encoder", "")?,
+            encoder_reverse: Gru::load(&st, "encoder", "_reverse")?,
+            encoder_fc: Linear::load(&st, "encoder_fc.0")?,
+            pre_decoder: Gru::load(&st, "pre_decoder", "")?,
+            post_decoder: Gru::load(&st, "post_decoder", "")?,
+            attn: Mha::load(&st, "attn", 4)?,
+            fc: Linear::load(&st, "fc")?,
             max_len: 16,
         })
     }
@@ -177,7 +177,7 @@ macro_rules! model {
             }
 
             pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
-                S2S::new(Npz::from_bytes(bytes)?).map(Self)
+                S2S::new(SafeTensors::from_bytes(bytes)?).map(Self)
             }
 
             /// Maximum number of output symbols, 16 by default.

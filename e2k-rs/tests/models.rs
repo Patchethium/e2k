@@ -14,7 +14,7 @@ fn model(name: &str) -> PathBuf {
 
 #[test]
 fn c2k() {
-    let c2k = C2K::from_path(model("model-c2k.npz")).unwrap();
+    let c2k = C2K::from_path(model("model-c2k.safetensors")).unwrap();
     assert_eq!(c2k.infer("geogaddi"), "ジオガディ");
     assert_eq!(c2k.infer("GeoGaddi"), "ジオガディ");
     assert!(c2k.in_table().iter().any(|s| s == "a"));
@@ -30,7 +30,7 @@ fn c2k() {
 
 #[test]
 fn p2k() {
-    let p2k = P2K::from_path(model("model-p2k.npz")).unwrap();
+    let p2k = P2K::from_path(model("model-p2k.safetensors")).unwrap();
     assert_eq!(
         p2k.infer(&["K", "AH0", "M", "P", "Y", "UW1", "T", "ER0"]),
         "コンピューター"
@@ -39,7 +39,7 @@ fn p2k() {
 
 #[test]
 fn accent() {
-    let ap = AccentPredictor::from_path(model("accent.npz")).unwrap();
+    let ap = AccentPredictor::from_path(model("accent.safetensors")).unwrap();
     assert_eq!(ap.predict("ステートレス"), 2);
     assert_eq!(ap.predict("ヘパリン"), 1);
     assert_eq!(ap.predict(""), 0);

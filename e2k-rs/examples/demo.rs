@@ -13,9 +13,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dir = PathBuf::from(args.next().ok_or("usage: demo <models dir> [word ...]")?);
     let words: Vec<String> = args.collect();
 
-    let c2k = C2K::from_path(dir.join("model-c2k.npz"))?;
-    let p2k = P2K::from_path(dir.join("model-p2k.npz"))?;
-    let ap = AccentPredictor::from_path(dir.join("accent.npz"))?;
+    let c2k = C2K::from_path(dir.join("model-c2k.safetensors"))?;
+    let p2k = P2K::from_path(dir.join("model-p2k.safetensors"))?;
+    let ap = AccentPredictor::from_path(dir.join("accent.safetensors"))?;
     let ngram = NGram::from_path(dir.join("ngram.json.zip"))?;
 
     if !words.is_empty() {

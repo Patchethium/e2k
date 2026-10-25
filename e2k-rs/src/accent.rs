@@ -4,7 +4,7 @@ use std::path::Path;
 use ndarray::{concatenate, Axis};
 
 use crate::nn::{Embedding, Gru, Linear};
-use crate::npz::Npz;
+use crate::safetensors::SafeTensors;
 use crate::Result;
 
 /// Predicts the pitch accent core of a Katakana word, trained on Unidic.
@@ -23,12 +23,8 @@ impl AccentPredictor {
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
-        let npz = Npz::from_bytes(bytes)?;
-        let symbols: Vec<String> = npz
-            .meta("in_table")?
-            .split('\0')
-            .map(String::from)
-            .collect();
+        let st = SafeTensors::from_bytes(bytes)?;
+        let symbols: Vec<String> = st.meta("in_table")?.split('\0').map(String::from).collect();
         let in_index = symbols
             .iter()
             .enumerate()
@@ -37,10 +33,10 @@ impl AccentPredictor {
         Ok(Self {
             symbols,
             in_index,
-            emb: Embedding::load(&npz, "emb.weight")?,
-            rnn: Gru::load(&npz, "rnn", "")?,
-            rnn_rev: Gru::load(&npz, "rnn", "_reverse")?,
-            head: Linear::load(&npz, "head")?,
+            emb: Embedding::load(&st, "emb.weight")?,
+            rnn: Gru::load(&st, "rnn", "")?,
+            rnn_rev: Gru::load(&st, "rnn", "_reverse")?,
+            head: Linear::load(&st, "head")?,
         })
     }
 

@@ -22,7 +22,6 @@ import argparse
 from functools import partial
 from os import path
 
-import numpy as np
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -31,7 +30,8 @@ from torch.optim.lr_scheduler import ExponentialLR, ReduceLROnPlateau
 
 from e2k.inference import S2S, greedy as np_greedy
 from e2k_train.train import Model, MyDataset, collate_fn, SEED, DIM
-from e2k_train.hp import kanas, en_phones, ascii_entries, SOS_IDX, EOS_IDX
+from e2k_train.export import model_weights, model_metadata
+from e2k_train.hp import kanas, SOS_IDX, EOS_IDX
 
 HEADS = 4
 
@@ -454,27 +454,12 @@ def greedy_batched(model, srcs, max_len=16, batch_size=256):
     return preds
 
 
-def export_npz(model: Model, p2k: bool, output: str, fp32: bool = False):
-    """as `export.py`: fp16 weights plus the vocabulary metadata"""
-    weights = {
-        name: (p.detach().float() if fp32 else p.detach().half()).numpy()
-        for name, p in model.named_parameters()
-    }
-    weights["metadata"] = {
-        "in_table": "\0".join(en_phones if p2k else ascii_entries),
-        "out_table": "\0".join(kanas),
-        "sos_idx": str(SOS_IDX),
-        "eos_idx": str(EOS_IDX),
-    }
-    np.savez(output, **weights)
-
-
-def evaluate(model, npz_path, base, test_idx):
+def evaluate(model, base, test_idx, p2k: bool):
     srcs = [base.srcs[i] for i in test_idx]
     refs = [base.data[i]["kata"] for i in test_idx]
     em, cer = score(greedy_batched(model, srcs), refs)
-    # the exported fp16 model through the numpy inference, single threaded
-    s2s = S2S(np.load(npz_path, allow_pickle=True))
+    # the fp16 weights `export.py` writes, through the numpy inference, single threaded
+    s2s = S2S(model_weights(model), model_metadata(p2k, accent=False))
     np_srcs = [s.numpy() for s in srcs]
     for s in np_srcs[:20]:
         s2s.forward(s, np_greedy)
@@ -542,9 +527,8 @@ def main():
             break
 
     def stage(name, width, build, record=None):
-        """trains (or loads) a model, exports and evaluates it, resumable"""
+        """trains (or loads) a model and evaluates it, resumable"""
         pth = path.join(args.out, f"{name}.pth")
-        npz = path.join(args.out, f"{name}.npz")
         model = Model(p2k=p2k, dim=width)
         if path.exists(pth):
             print(f"== {name}: loading {pth}")
@@ -558,15 +542,14 @@ def main():
             torch.save(model.state_dict(), pth)
             results[name] = {"width": width, "params": n_params(model), **info}
             save_results()
-        export_npz(model, p2k, npz)
         if "em" not in results.get(name, {}):
             results.setdefault(name, {"width": width, "params": n_params(model)})
-            results[name].update(evaluate(model, npz, base, test_idx))
+            results[name].update(evaluate(model, base, test_idx, p2k))
             save_results()
         r = results[name]
         print(
             f"== {name}: EM {r['em']:.4f} CER {r['cer']:.4f} "
-            f"(npz EM {r['em_npz']:.4f}) {r['ms_per_word']:.2f} ms/word",
+            f"(fp16 EM {r['em_npz']:.4f}) {r['ms_per_word']:.2f} ms/word",
             flush=True,
         )
         return model.eval()

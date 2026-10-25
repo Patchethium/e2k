@@ -33,7 +33,7 @@ let ap = AccentPredictor::embedded()?;
 let ngram = NGram::embedded()?;
 
 // Or from files
-let c2k = C2K::from_path("model-c2k.npz")?;
+let c2k = C2K::from_path("model-c2k.safetensors")?;
 
 // 1. Translation
 println!("{}", c2k.infer("geogaddi")); // ジオガディ

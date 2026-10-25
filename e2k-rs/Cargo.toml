@@ -14,4 +14,4 @@ half = "2"
 ndarray = "0.17"
 rand = "0.9"
 serde_json = { version = "1", features = ["preserve_order"] }
-zip = { version = "9", default-features = false, features = ["deflate", "lzma"] }
+zip = { version = "9", default-features = false, features = ["lzma"] }
