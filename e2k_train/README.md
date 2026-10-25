@@ -66,17 +66,20 @@ Copy `vendor/ngram.json.zip` to `src/e2k/models/` to ship it. `ngram_kn.py` and 
 ### 4. E2K Model
 
 ```bash
-uv run train.py --data ./vendor/katakana_dict.jsonl
+uv run train.py --data ./vendor/katakana_dict.jsonl [--p2k]
 ```
 
-The checkpoint will be stored as `vendor/model-{p2k|c2k}-e{epoch}.pth`. It's recommended to use [`CUDA`](#Install-dependencies) for faster training.
+The checkpoint will be stored as `vendor/model-{p2k|c2k}.pth`. Every model trains on the same fixed 90/5/5 train/val/test split (`split` in `train.py`), so the test words stay unseen. `shrink.py` trains the same model as its teacher before cutting it down to the turbo width.
 
 ### Evaluation
 
-Run with `--help` for more details.
+`eval.py` runs the models through the `e2k` runtime on the test split: BLEU, exact match and CER for C2K/P2K, accuracy and precision, recall and F1 (weighted and macro) for the accent predictor. Run it from the repository root, with `--help` for more details.
 
 ```bash
-uv run eval.py --data ./vendor/katakana_dict.jsonl --model model.pth --p2k
+# every shipped model
+uv run python -m e2k_train.eval
+# a model file, e.g. one exported from a new checkpoint
+uv run python -m e2k_train.eval --task c2k --path model-c2k.safetensors
 ```
 
 ### Export

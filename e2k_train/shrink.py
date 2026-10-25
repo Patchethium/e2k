@@ -17,82 +17,24 @@ os.environ.setdefault("MKL_NUM_THREADS", "1")
 
 import json
 import time
-import random
 import argparse
-from functools import partial
 from os import path
 
 import torch
 from torch import nn
 import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader
-from torch.optim.lr_scheduler import ExponentialLR, ReduceLROnPlateau
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from e2k.inference import S2S, greedy as np_greedy
-from e2k_train.train import Model, MyDataset, collate_fn, SEED, DIM
+from e2k_train.train import Model, Words, load_data, loader, train_ce, SEED, DIM
 from e2k_train.export import model_weights, model_metadata
+from e2k_train.eval import score
 from e2k_train.hp import kanas, SOS_IDX, EOS_IDX
 
 HEADS = 4
 
 
 # ---------------------------------------------------------------- data
-
-
-class Words(Dataset):
-    """
-    Encodes every entry once. Unlike `MyDataset`, a training item samples a
-    fresh spelling on every access; a `fixed` one keeps a seeded spelling, so
-    validation losses are comparable across epochs.
-    """
-
-    def __init__(self, base: MyDataset, indices, fixed: bool, seed: int = SEED):
-        self.base = base
-        self.indices = list(indices)
-        self.fixed = fixed
-        self.rng = random.Random(seed)
-        self.choice = [self.rng.randrange(len(base.katas[i])) for i in self.indices]
-
-    def __len__(self):
-        return len(self.indices)
-
-    def __getitem__(self, i):
-        idx = self.indices[i]
-        katas = self.base.katas[idx]
-        j = self.choice[i] if self.fixed else self.rng.randrange(len(katas))
-        return self.base.srcs[idx], katas[j]
-
-
-def load_data(data_path, p2k):
-    base = MyDataset(data_path, torch.device("cpu"), p2k=p2k)
-    base.srcs, base.katas = [], []
-    for item in base.data:
-        src = base.p2k(item["word"]) if p2k else base.c2k(item["word"])
-        base.srcs.append(torch.tensor([SOS_IDX] + src + [EOS_IDX]))
-        base.katas.append(
-            [
-                torch.tensor([SOS_IDX] + [base.kata_dict[c] for c in k] + [EOS_IDX])
-                for k in item["kata"]
-            ]
-        )
-    # fixed 90/5/5 split, independent of the global torch seed
-    perm = torch.randperm(len(base), generator=torch.Generator().manual_seed(SEED))
-    perm = perm.tolist()
-    n_val = n_test = len(base) // 20
-    test_idx = perm[:n_test]
-    val_idx = perm[n_test : n_test + n_val]
-    train_idx = perm[n_test + n_val :]
-    return base, train_idx, val_idx, test_idx
-
-
-def loader(ds, shuffle, batch_size=64):
-    return DataLoader(
-        ds,
-        batch_size=batch_size,
-        shuffle=shuffle,
-        generator=torch.Generator().manual_seed(SEED) if shuffle else None,
-        collate_fn=partial(collate_fn, device=torch.device("cpu")),
-    )
 
 
 # ---------------------------------------------------------------- statistics
@@ -327,27 +269,6 @@ def val_loss(model, teacher, val_dl, parts=False):
     return (loss, kl, ce) if parts else loss
 
 
-def train_ce(model, train_dl, val_dl, epochs=10):
-    """the `train.py` recipe"""
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-    scheduler = ExponentialLR(optimizer, 0.8)
-    history = []
-    for epoch in range(1, epochs + 1):
-        model.train()
-        t0 = time.time()
-        for src, tgt, src_mask, tgt_mask in train_dl:
-            optimizer.zero_grad()
-            out = model(src, tgt, src_mask, tgt_mask)
-            loss = F.cross_entropy(out.transpose(1, 2), tgt[:, 1:], ignore_index=0)
-            loss.backward()
-            optimizer.step()
-        scheduler.step()
-        loss = val_loss(model, None, val_dl)
-        history.append(loss)
-        print(f"  epoch {epoch}: val CE {loss:.4f} ({time.time() - t0:.0f}s)", flush=True)
-    return history
-
-
 def distill(student, teacher, train_dl, val_dl, lr=5e-4, max_epochs=40, patience=3):
     """trains to convergence on the KD loss, restores the best epoch"""
     teacher.eval()
@@ -391,15 +312,6 @@ def distill(student, teacher, train_dl, val_dl, lr=5e-4, max_epochs=40, patience
 # ---------------------------------------------------------------- evaluation
 
 
-def edit_distance(a, b):
-    row = list(range(len(b) + 1))
-    for i, ca in enumerate(a, 1):
-        prev, row[0] = row[0], i
-        for j, cb in enumerate(b, 1):
-            prev, row[j] = row[j], min(row[j] + 1, row[j - 1] + 1, prev + (ca != cb))
-    return row[-1]
-
-
 def decode(ids):
     out = []
     for i in ids:
@@ -407,17 +319,6 @@ def decode(ids):
             break
         out.append(kanas[i])
     return "".join(out)
-
-
-def score(preds, refs):
-    """exact match against any reference, CER against the closest one"""
-    exact, dist, length = 0, 0, 0
-    for pred, ref in zip(preds, refs):
-        exact += pred in ref
-        d, r = min((edit_distance(pred, r), r) for r in ref)
-        dist += d
-        length += len(r)
-    return exact / len(preds), dist / length
 
 
 @torch.no_grad()

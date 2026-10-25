@@ -2,13 +2,14 @@ import csv
 import torch
 
 from torch import nn, Tensor
-from torch.utils.data import Dataset, DataLoader, random_split
-from torch.nn.utils.rnn import pad_sequence
+from torch.utils.data import Dataset, DataLoader, Subset
+from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence
 from torch.utils.tensorboard import SummaryWriter
 from torch.optim.lr_scheduler import ExponentialLR
 from torcheval.metrics import MulticlassAccuracy
 
 from e2k_train.hp import kanas
+from e2k_train.train import split
 
 
 DIM = 256
@@ -22,8 +23,16 @@ class AccentPredictor(nn.Module):
         self.rnn = nn.GRU(DIM, DIM, 1, batch_first=True, bidirectional=True)
         self.head = nn.Linear(2 * DIM, 1)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor, lengths: Tensor) -> Tensor:
+        """
+        x: [B, T] padded, lengths: [B]
+        packed, so the padding never reaches the GRU and a batch predicts
+        what the runtimes predict for each word on its own
+        """
         x = self.emb(x)
+        x = pack_padded_sequence(
+            x, lengths.cpu().long(), batch_first=True, enforce_sorted=False
+        )
         _, h = self.rnn(x)
         h = torch.cat([h[0], h[1]], dim=-1)
         acc = self.head(h)
@@ -32,8 +41,7 @@ class AccentPredictor(nn.Module):
 
 
 class AccentDataset(Dataset):
-    def __init__(self):
-        path = "vendor/lex.csv"
+    def __init__(self, path: str = "vendor/lex.csv"):
         with open(path) as f:
             lines = f.readlines()
         reader = csv.reader(lines, delimiter=",")
@@ -76,7 +84,8 @@ def train():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = AccentPredictor().to(device)
     dataset = AccentDataset()
-    train_ds, val_ds = random_split(dataset, [0.9, 0.1])
+    train_idx, val_idx, _ = split(len(dataset))
+    train_ds, val_ds = Subset(dataset, train_idx), Subset(dataset, val_idx)
     train_dl = DataLoader(train_ds, batch_size=128, shuffle=True, collate_fn=collate_fn)
     val_dl = DataLoader(val_ds, batch_size=128, shuffle=False, collate_fn=collate_fn)
     optim = torch.optim.Adam(model.parameters(), lr=1e-3)
@@ -86,12 +95,12 @@ def train():
     writer = SummaryWriter()
     step = 0
     for e in range(1, epochs + 1):
-        for ph, acc, _, _ in train_dl:
+        for ph, acc, _, length in train_dl:
             step += 1
             ph = ph.to(device)
             acc = acc.to(device)
             optim.zero_grad()
-            pred_acc = model.forward(ph)
+            pred_acc = model.forward(ph, length)
             loss = criterian.forward(pred_acc, acc)
             loss.backward()
             optim.step()
@@ -103,7 +112,7 @@ def train():
                     ph = ph.to(device)
                     core = core.to(device)
                     length = length.to(device)
-                    pred_acc = model(ph)
+                    pred_acc = model(ph, length)
                     pred_core = (pred_acc * length).round().long()
                     core = core.long()
                     accuracy.update(pred_core, core)

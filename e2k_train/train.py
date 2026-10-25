@@ -1,6 +1,8 @@
 # we train a s2s model to predict the katakana phonemes from
 # English phonemes
 import json
+import time
+import random
 import argparse
 from functools import partial
 from os import path
@@ -8,10 +10,10 @@ from random import randint
 
 import torch
 from torch import nn
-from torch.utils.data import random_split, Dataset, DataLoader
+import torch.nn.functional as F
+from torch.utils.data import Dataset, DataLoader
 from torch.nn.utils.rnn import pad_sequence
 from torch.optim.lr_scheduler import ExponentialLR
-from torch.utils.tensorboard import SummaryWriter
 
 from g2p_en import G2p
 
@@ -200,71 +202,127 @@ def infer(src, model, p2k):
     return src, res
 
 
+class Words(Dataset):
+    """
+    Encodes every entry once. Unlike `MyDataset`, a training item samples a
+    fresh spelling on every access; a `fixed` one keeps a seeded spelling, so
+    validation losses are comparable across epochs.
+    """
+
+    def __init__(self, base: MyDataset, indices, fixed: bool, seed: int = SEED):
+        self.base = base
+        self.indices = list(indices)
+        self.fixed = fixed
+        self.rng = random.Random(seed)
+        self.choice = [self.rng.randrange(len(base.katas[i])) for i in self.indices]
+
+    def __len__(self):
+        return len(self.indices)
+
+    def __getitem__(self, i):
+        idx = self.indices[i]
+        katas = self.base.katas[idx]
+        j = self.choice[i] if self.fixed else self.rng.randrange(len(katas))
+        return self.base.srcs[idx], katas[j]
+
+
+def split(n: int, seed: int = SEED):
+    """
+    fixed 90/5/5 train/val/test indices, independent of the global torch seed,
+    so the test words stay unseen by every model trained on `train`
+    """
+    perm = torch.randperm(n, generator=torch.Generator().manual_seed(seed)).tolist()
+    n_val = n_test = n // 20
+    test = perm[:n_test]
+    val = perm[n_test : n_test + n_val]
+    train = perm[n_test + n_val :]
+    return train, val, test
+
+
+def load_data(data_path, p2k):
+    base = MyDataset(data_path, torch.device("cpu"), p2k=p2k)
+    base.srcs, base.katas = [], []
+    for item in base.data:
+        src = base.p2k(item["word"]) if p2k else base.c2k(item["word"])
+        base.srcs.append(torch.tensor([SOS_IDX] + src + [EOS_IDX]))
+        base.katas.append(
+            [
+                torch.tensor([SOS_IDX] + [base.kata_dict[c] for c in k] + [EOS_IDX])
+                for k in item["kata"]
+            ]
+        )
+    train_idx, val_idx, test_idx = split(len(base))
+    return base, train_idx, val_idx, test_idx
+
+
+def loader(ds, shuffle, batch_size=64):
+    return DataLoader(
+        ds,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        generator=torch.Generator().manual_seed(SEED) if shuffle else None,
+        collate_fn=partial(collate_fn, device=torch.device("cpu")),
+    )
+
+
+@torch.no_grad()
+def val_ce(model, val_dl):
+    """token weighted cross entropy"""
+    model.eval()
+    ce_sum, count = 0.0, 0
+    for src, tgt, src_mask, tgt_mask in val_dl:
+        out = model(src, tgt, src_mask, tgt_mask)
+        n = (tgt[:, 1:] != 0).sum().item()
+        ce = F.cross_entropy(out.transpose(1, 2), tgt[:, 1:], ignore_index=0)
+        ce_sum += ce.item() * n
+        count += n
+    return ce_sum / count
+
+
+def train_ce(model, train_dl, val_dl, epochs=10):
+    """trains a model from scratch on the data, also the teacher of `shrink.py`"""
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    scheduler = ExponentialLR(optimizer, 0.8)
+    history = []
+    for epoch in range(1, epochs + 1):
+        model.train()
+        t0 = time.time()
+        for src, tgt, src_mask, tgt_mask in train_dl:
+            optimizer.zero_grad()
+            out = model(src, tgt, src_mask, tgt_mask)
+            loss = F.cross_entropy(out.transpose(1, 2), tgt[:, 1:], ignore_index=0)
+            loss.backward()
+            optimizer.step()
+        scheduler.step()
+        loss = val_ce(model, val_dl)
+        history.append(loss)
+        print(
+            f"  epoch {epoch}: val CE {loss:.4f} ({time.time() - t0:.0f}s)", flush=True
+        )
+    return history
+
+
 def train():
-    torch.manual_seed(SEED)
     parser = argparse.ArgumentParser()
     parser.add_argument("--data", type=str, default="vendor/katakana_dict.jsonl")
     parser.add_argument("--p2k", action="store_true")
+    parser.add_argument(
+        "--output", type=str, help="defaults to vendor/model-{c2k|p2k}.pth"
+    )
     args = parser.parse_args()
+    task = "p2k" if args.p2k else "c2k"
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    model = Model(p2k=args.p2k).to(device)
-    dataset = MyDataset(args.data, device, p2k=args.p2k)
-    train_ds, val_ds = random_split(dataset, [0.95, 0.05])
-
-    train_dl = DataLoader(
-        train_ds,
-        batch_size=64,
-        shuffle=True,
-        collate_fn=partial(collate_fn, device=device),
-    )
-    val_dl = DataLoader(
-        val_ds,
-        batch_size=64,
-        shuffle=True,
-        collate_fn=partial(collate_fn, device=device),
-    )
-
-    criterion = nn.CrossEntropyLoss(ignore_index=0)
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-    scheduler = ExponentialLR(optimizer, 0.8)
-    writer = SummaryWriter()
-    epochs = 10
-    steps = 0
-    for epoch in range(1, epochs + 1):
-        model.train()
-        for eng, kata, e_mask, k_mask in train_dl:
-            optimizer.zero_grad()
-            out = model(eng, kata, e_mask, k_mask)
-            loss = criterion(out.transpose(1, 2), kata[:, 1:])
-            writer.add_scalar("Loss/train", loss.item(), steps)
-            loss.backward()
-            optimizer.step()
-            steps += 1
-        model.eval()
-        total_loss = 0
-        count = 0
-        with torch.no_grad():
-            for eng, kata, e_mask, k_mask in val_dl:
-                out = model(eng, kata, e_mask, k_mask)
-                loss = criterion(out.transpose(1, 2), kata[:, 1:])
-                total_loss += loss.item()
-                count += 1
-        # take a sample and inference it
-        sample = val_ds[randint(0, len(val_ds) - 1)]
-        src, tgt = sample
-        src, pred = infer(src, model, args.p2k)
-        print(f"Epoch {epoch} Sample: {src} -> {pred}")
-        writer.add_scalar("Loss/val", total_loss / count, epoch)
-        print(f"Epoch {epoch} Loss: {total_loss / count}")
-        scheduler.step()
-        name = "p2k" if args.p2k else "c2k"
-    else:
-        torch.save(
-            model.state_dict(),
-            path.join("vendor", f"model-{name}-e{epoch}.pth"),
-        )
+    # the same data, split and seeding as the teacher of `shrink.py`
+    base, train_idx, val_idx, test_idx = load_data(args.data, args.p2k)
+    print(f"split: {len(train_idx)} train, {len(val_idx)} val, {len(test_idx)} test")
+    train_dl = loader(Words(base, train_idx, fixed=False), shuffle=True)
+    val_dl = loader(Words(base, val_idx, fixed=True), shuffle=False)
+    torch.manual_seed(SEED)
+    model = Model(p2k=args.p2k)
+    train_ce(model, train_dl, val_dl)
+    output = args.output or path.join("vendor", f"model-{task}.pth")
+    torch.save(model.state_dict(), output)
+    print(f"saved {output}")
 
 
 if __name__ == "__main__":
