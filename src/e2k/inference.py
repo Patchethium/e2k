@@ -319,9 +319,17 @@ class S2S:
         return res
 
 
+def read_model(name: str, path: Optional[str]) -> bytes:
+    """the model file at `path`, else the shipped `name`"""
+    if path is None:
+        return read_asset(name)
+    with open(path, "rb") as f:
+        return f.read()
+
+
 class BaseE2K:
-    def __init__(self, name: str, max_len: int = 16):
-        self.s2s = S2S(*load_safetensors(read_asset(name)), max_len)
+    def __init__(self, name: str, max_len: int = 16, path: Optional[str] = None):
+        self.s2s = S2S(*load_safetensors(read_model(name, path)), max_len)
         self.in_table = {c: i for i, c in enumerate(self.s2s.in_table)}
         self.out_table = self.s2s.out_table
 
@@ -400,18 +408,40 @@ def model_file(task: str, model: ModelVariant) -> str:
 
 
 class P2K(BaseE2K):
-    def __init__(self, max_len: int = 16, model: ModelVariant = "base"):
-        super().__init__(model_file("p2k", model), max_len)
+    """
+    `path` loads a model file instead of the shipped `model`.
+    """
+
+    def __init__(
+        self,
+        max_len: int = 16,
+        model: ModelVariant = "base",
+        path: Optional[str] = None,
+    ):
+        super().__init__(model_file("p2k", model), max_len, path)
 
 
 class C2K(BaseE2K):
-    def __init__(self, max_len: int = 16, model: ModelVariant = "base"):
-        super().__init__(model_file("c2k", model), max_len)
+    """
+    `path` loads a model file instead of the shipped `model`.
+    """
+
+    def __init__(
+        self,
+        max_len: int = 16,
+        model: ModelVariant = "base",
+        path: Optional[str] = None,
+    ):
+        super().__init__(model_file("c2k", model), max_len, path)
 
 
 class AccentPredictor:
-    def __init__(self):
-        weights, metadata = load_safetensors(read_asset("accent.safetensors"))
+    """
+    `path` loads a model file instead of the shipped one.
+    """
+
+    def __init__(self, path: Optional[str] = None):
+        weights, metadata = load_safetensors(read_model("accent.safetensors", path))
         weights = to_fp32(weights)
         self.symbols = list(metadata["in_table"].split("\0"))
         self.in_table = {c: i for i, c in enumerate(self.symbols)}
