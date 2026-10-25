@@ -11,7 +11,7 @@ The crate isn't on crates.io, as the models exceed its size limit. Depend on it 
 e2k = { git = "https://github.com/Patchethium/e2k", tag = "v0.8.1" }
 ```
 
-The models are tracked in git under [`src/e2k/models`](../src/e2k/models), shared with the Python package. The `embedded()` constructors build them into your binary (about 11 MB). To load other model files at runtime instead, use `from_path`, or `from_bytes` (`from_zip_bytes` for `NGram`); the linker then leaves the built-in models out.
+The models are tracked in git under [`src/e2k/models`](../src/e2k/models), shared with the Python package. The `embedded()` constructors build them into your binary (about 11 MB), and `embedded_turbo()` adds about 1.1 MB per turbo model. The linker keeps only the models your binary loads. To load other model files at runtime instead, use `from_path`, or `from_bytes` (`from_zip_bytes` for `NGram`).
 
 Cargo clones the whole repository history for git dependencies. To fetch only the tagged commit, enable shallow clones (nightly) in `.cargo/config.toml`:
 
@@ -31,6 +31,11 @@ let c2k = C2K::embedded()?;
 let p2k = P2K::embedded()?;
 let ap = AccentPredictor::embedded()?;
 let ngram = NGram::embedded()?;
+
+// Turbo models: distilled to width 128, about four times as fast with comparable
+// accuracy, though their outputs differ on some words
+let c2k_turbo = C2K::embedded_turbo()?;
+let p2k_turbo = P2K::embedded_turbo()?;
 
 // Or from files
 let c2k = C2K::from_path("model-c2k.safetensors")?;
@@ -62,6 +67,8 @@ ap.in_table();
 | ---------------------------- | ------------------------------------- |
 | `c2k(word)`                  | `c2k.infer(word)`                     |
 | `c2k(word, "top_k", k=5)`    | `c2k.infer_with(word, Strategy::TopK { k: 5 })` |
+| `C2K(model="turbo")`         | `C2K::embedded_turbo()`               |
+| `C2K(path=file)`             | `C2K::from_path(file)`                |
 | `p2k(phonemes)`              | `p2k.infer(&phonemes)`                |
 | `ap(katakana)`               | `ap.predict(katakana)`                |
 | `ngram(word)`                | `ngram.is_valid(word)`                |

@@ -37,6 +37,24 @@ fn p2k() {
     );
 }
 
+// The turbo models differ from the default ones on these words, so the
+// expected outputs also tell the two apart.
+#[test]
+fn c2k_turbo() {
+    let c2k = C2K::from_path(model("model-c2k-turbo.safetensors")).unwrap();
+    assert_eq!(c2k.infer("geogaddi"), "ジオガジ");
+    assert_eq!(c2k.infer("computer"), "コンピューター");
+}
+
+#[test]
+fn p2k_turbo() {
+    let p2k = P2K::from_path(model("model-p2k-turbo.safetensors")).unwrap();
+    assert_eq!(
+        p2k.infer(&["K", "AH0", "M", "P", "Y", "UW1", "T", "ER0"]),
+        "コンピュータ"
+    );
+}
+
 #[test]
 fn accent() {
     let ap = AccentPredictor::from_path(model("accent.safetensors")).unwrap();
@@ -68,6 +86,13 @@ fn embedded() {
             .unwrap()
             .infer(&["K", "AH0", "M", "P", "Y", "UW1", "T", "ER0"]),
         "コンピューター"
+    );
+    assert_eq!(C2K::embedded_turbo().unwrap().infer("geogaddi"), "ジオガジ");
+    assert_eq!(
+        P2K::embedded_turbo()
+            .unwrap()
+            .infer(&["K", "AH0", "M", "P", "Y", "UW1", "T", "ER0"]),
+        "コンピュータ"
     );
     assert_eq!(AccentPredictor::embedded().unwrap().predict("ヘパリン"), 1);
     assert!(!NGram::embedded().unwrap().is_valid("ussr"));

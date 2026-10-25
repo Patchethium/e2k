@@ -4,9 +4,11 @@
 
 use std::path::Path;
 
-const MODELS: [&str; 4] = [
+const MODELS: [&str; 6] = [
     "model-c2k.safetensors",
     "model-p2k.safetensors",
+    "model-c2k-turbo.safetensors",
+    "model-p2k-turbo.safetensors",
     "accent.safetensors",
     "ngram.json.zip",
 ];
